@@ -33,6 +33,6 @@ cargo build --release
 
 - "Armory" (https://skfb.ly/6DxAW) by RyanMurphyLucas is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
 
-- "Offlow Field Map" (https://skfb.ly/p7KLB) by Shiro Morturn is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
-
 - "Ak 47" (https://skfb.ly/6yrzJ) by jeferson is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
+
+- "Warehouse fbx model" (https://skfb.ly/pEKFT) by mason_roman's helloneighborfangamingmodelworks is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
