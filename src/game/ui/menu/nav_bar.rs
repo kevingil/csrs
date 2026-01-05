@@ -82,8 +82,8 @@ fn setup_nav_bar(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ))
                 .with_child((
                     ImageNode {
-                        image: asset_server.load("models/images/home.png"),
-                        color: Color::WHITE, // Tints black image to white
+                        image: asset_server.load("models/images/icon-home-48.png"),
+                        color: Color::WHITE,
                         ..default()
                     },
                     Node {
@@ -99,29 +99,45 @@ fn setup_nav_bar(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             });
 
-            // Inventory button
+            // Inventory button with icon and text
             parent
                 .spawn((
                     InventoryButton,
                     Button,
                     Node {
-                        width: Val::Px(120.0),
                         height: Val::Px(45.0),
+                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
+                        flex_direction: FlexDirection::Row,
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
                         ..default()
                     },
                     BackgroundColor(BUTTON_NORMAL),
                     BorderRadius::all(Val::Px(8.0)),
                 ))
-                .with_child((
-                    Text::new("Inventory"),
-                    TextFont {
-                        font_size: 18.0,
-                        ..default()
-                    },
-                    TextColor(Color::WHITE),
-                ));
+                .with_children(|btn| {
+                    btn.spawn((
+                        ImageNode {
+                            image: asset_server.load("models/images/icon-box-50.png"),
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                        Node {
+                            width: Val::Px(22.0),
+                            height: Val::Px(22.0),
+                            ..default()
+                        },
+                    ));
+                    btn.spawn((
+                        Text::new("Inventory"),
+                        TextFont {
+                            font_size: 16.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
 
             // Play button (center, large, green)
             parent
@@ -147,29 +163,45 @@ fn setup_nav_bar(mut commands: Commands, asset_server: Res<AssetServer>) {
                     TextColor(Color::WHITE),
                 ));
 
-            // Settings button
+            // Settings button with icon and text
             parent
                 .spawn((
                     SettingsButton,
                     Button,
                     Node {
-                        width: Val::Px(120.0),
                         height: Val::Px(45.0),
+                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
+                        flex_direction: FlexDirection::Row,
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
                         ..default()
                     },
                     BackgroundColor(BUTTON_NORMAL),
                     BorderRadius::all(Val::Px(8.0)),
                 ))
-                .with_child((
-                    Text::new("Settings"),
-                    TextFont {
-                        font_size: 18.0,
-                        ..default()
-                    },
-                    TextColor(Color::WHITE),
-                ));
+                .with_children(|btn| {
+                    btn.spawn((
+                        ImageNode {
+                            image: asset_server.load("models/images/icon-settings-50.png"),
+                            color: Color::WHITE,
+                            ..default()
+                        },
+                        Node {
+                            width: Val::Px(22.0),
+                            height: Val::Px(22.0),
+                            ..default()
+                        },
+                    ));
+                    btn.spawn((
+                        Text::new("Settings"),
+                        TextFont {
+                            font_size: 16.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
 
             // Spacer to balance
             parent.spawn(Node {

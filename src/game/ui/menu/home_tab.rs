@@ -173,7 +173,7 @@ fn setup_home_tab(mut commands: Commands) {
                         ))
                         .with_children(|parent| {
                             parent.spawn((
-                                Text::new("▶ Start Game"),
+                                Text::new("Start Game"),
                                 TextFont {
                                     font_size: 24.0,
                                     ..default()
