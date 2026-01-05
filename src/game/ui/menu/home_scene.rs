@@ -1,8 +1,13 @@
-use bevy::{prelude::*, render::camera::Exposure};
+use bevy::{
+    core_pipeline::bloom::Bloom,
+    prelude::*,
+    render::camera::Exposure,
+};
 use bevy_rapier3d::render::DebugRenderContext;
 use std::{fs::OpenOptions, time::Duration};
 use std::io::Write;
 
+use crate::game::config::MapConfig;
 use crate::game::player::animation::SharedAnimations;
 use crate::game::player::player_model::PlayerModel;
 use crate::game::player::skins::{SkinId, SkinRegistry};
@@ -15,34 +20,49 @@ impl Plugin for HomeScenePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DebugTarget>()
             .init_resource::<DebugPanelState>()
+            .init_resource::<MapConfig>()
             .init_gizmo_group::<SkeletonGizmos>()
-            .add_systems(Startup, setup_skeleton_gizmos)
-            .add_systems(OnEnter(GameState::MainMenu), (setup_home_scene, setup_debug_ui))
+            .add_systems(Startup, (setup_skeleton_gizmos, setup_debug_ui))
+            .add_systems(OnEnter(GameState::MainMenu), setup_home_scene)
             .add_systems(OnExit(GameState::MainMenu), cleanup_home_scene)
+            // Home scene specific systems (only in MainMenu)
             .add_systems(
                 Update,
                 (
                     add_animation_player_to_home_model,
                     setup_home_player_animation,
-                    handle_debug_buttons,
-                    update_debug_display,
                     update_animation_index_display,
                     update_home_animation_from_index,
+                )
+                    .run_if(in_state(GameState::MainMenu)),
+            )
+            // Debug panel systems (run in both MainMenu and Playing)
+            .add_systems(
+                Update,
+                (
+                    handle_debug_buttons,
+                    update_debug_display,
                     keyboard_debug_controls,
                     handle_debug_toggle,
                     handle_debug_drag,
                     update_debug_panel_position,
+                    handle_postprocess_sliders,
+                    update_postprocess_displays,
                 )
-                    .run_if(in_state(GameState::MainMenu)),
+                    .run_if(in_state(GameState::MainMenu).or(in_state(GameState::Playing))),
             )
             // Debug skeleton gizmos run globally for all player models
             .add_systems(Update, draw_skeleton_gizmos);
     }
 }
 
-/// Marker for home scene entities
+/// Marker for home scene entities (cleaned up when leaving menu)
 #[derive(Component)]
 pub struct HomeSceneEntity;
+
+/// Marker for debug UI entities (persists across states)
+#[derive(Component)]
+pub struct DebugUiEntity;
 
 /// Marker for the home scene 3D camera (separate from game camera)
 #[derive(Component)]
@@ -55,6 +75,10 @@ struct HomePlayerModel;
 /// Marker for the armory scene
 #[derive(Component)]
 struct ArmoryScene;
+
+/// Marker for the warehouse map (gameplay map preview)
+#[derive(Component)]
+struct WarehouseScene;
 
 /// Debug UI root
 #[derive(Component)]
@@ -83,6 +107,30 @@ struct DebugDisplayText;
 /// Animation index display text
 #[derive(Component)]
 struct AnimationIndexDisplay;
+
+/// Marker for bloom intensity slider
+#[derive(Component)]
+struct BloomIntensitySlider;
+
+/// Marker for bloom intensity value display
+#[derive(Component)]
+struct BloomIntensityValue;
+
+/// Marker for contrast slider
+#[derive(Component)]
+struct ContrastSlider;
+
+/// Marker for contrast value display
+#[derive(Component)]
+struct ContrastValue;
+
+/// Marker for saturation slider
+#[derive(Component)]
+struct SaturationSlider;
+
+/// Marker for saturation value display
+#[derive(Component)]
+struct SaturationValue;
 
 /// State for the debug panel
 #[derive(Resource)]
@@ -117,6 +165,7 @@ enum DebugTarget {
     Character,
     Scene,
     Camera,
+    Warehouse,
 }
 
 /// Debug button actions
@@ -126,6 +175,7 @@ enum DebugButton {
     SelectCharacter,
     SelectScene,
     SelectCamera,
+    SelectWarehouse,
     // Position adjustments
     PosXPlus,
     PosXMinus,
@@ -152,7 +202,7 @@ enum DebugButton {
     AnimNext,
 }
 
-// Button colors
+// Button colors (also available in debug_widgets module)
 const BTN_NORMAL: Color = Color::srgba(0.2, 0.2, 0.3, 0.9);
 const BTN_HOVER: Color = Color::srgba(0.3, 0.3, 0.5, 0.9);
 const BTN_ACTIVE: Color = Color::srgba(0.2, 0.6, 0.3, 0.9);
@@ -185,6 +235,7 @@ fn setup_home_scene(
     asset_server: Res<AssetServer>,
     loadout: Res<PlayerLoadout>,
     skin_registry: Res<SkinRegistry>,
+    map_config: Res<MapConfig>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -196,7 +247,7 @@ fn setup_home_scene(
     // Custom FOV for menu scene
     let menu_fov = 60.0_f32.to_radians();
 
-    // 3D Camera for the home scene
+    // 3D Camera for the home scene with post-processing
     commands.spawn((
         HomeSceneEntity,
         HomeSceneCamera,
@@ -209,10 +260,20 @@ fn setup_home_scene(
         }),
         Camera {
             order: 0,
+            hdr: true, // Required for bloom
             ..default()
         },
         Transform::from_xyz(-0.0329, 2.7334, 5.4840).with_rotation(Quat::from_axis_angle(Vec3::new(-1.0, 0.0, 0.0), 0.1244)),
         Exposure::INDOOR,
+        // Post-processing effects
+        Bloom {
+            intensity: map_config.post_process.bloom_intensity,
+            low_frequency_boost: 0.2,  // Reduced from 0.5
+            low_frequency_boost_curvature: 0.7,
+            high_pass_frequency: 1.0,
+            ..default()
+        },
+        map_config.post_process.tonemapping,
     ));
 
     // Armory background scene
@@ -223,6 +284,17 @@ fn setup_home_scene(
         Transform::from_xyz(5.2099, 0.0, 2.4632)
             .with_scale(Vec3::splat(1.753397))
             .with_rotation(Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), 0.6154)),
+    ));
+
+    // Warehouse map (gameplay map preview, initially positioned off to the side)
+    commands.spawn((
+        HomeSceneEntity,
+        WarehouseScene,
+        SceneRoot(asset_server.load("models/map/warehouse_map.glb#Scene0")),
+        Transform::from_translation(map_config.map_position)
+            .with_scale(Vec3::splat(map_config.map_scale))
+            .with_rotation(map_config.map_rotation),
+        Visibility::Hidden, // Hidden by default, toggle with debug panel
     ));
 
     // Platform for player to stand on
@@ -385,10 +457,10 @@ fn setup_home_player_animation(
 }
 
 fn setup_debug_ui(mut commands: Commands, panel_state: Res<DebugPanelState>, asset_server: Res<AssetServer>) {
-    // Debug UI panel - draggable window
+    // Debug UI panel - draggable window (persists across game states)
     commands
         .spawn((
-            HomeSceneEntity,
+            DebugUiEntity,
             DebugUiRoot,
             Node {
                 position_type: PositionType::Absolute,
@@ -472,12 +544,15 @@ fn setup_debug_ui(mut commands: Commands, panel_state: Res<DebugPanelState>, ass
                         .spawn(Node {
                             flex_direction: FlexDirection::Row,
                             column_gap: Val::Px(4.0),
+                            flex_wrap: FlexWrap::Wrap,
+                            row_gap: Val::Px(4.0),
                             ..default()
                         })
                         .with_children(|row| {
                             spawn_debug_button!(row, "Char", DebugButton::SelectCharacter);
                             spawn_debug_button!(row, "Scene", DebugButton::SelectScene);
                             spawn_debug_button!(row, "Cam", DebugButton::SelectCamera);
+                            spawn_debug_button!(row, "Map", DebugButton::SelectWarehouse);
                         });
 
                     // Position display
@@ -564,7 +639,7 @@ fn setup_debug_ui(mut commands: Commands, panel_state: Res<DebugPanelState>, ass
                             spawn_debug_button!(row, "+", DebugButton::ScalePlus);
                         });
 
-                    // Rotation X row (pitch - forward/backward tilt)
+                    // Rotation X row
                     content
                         .spawn(Node {
                             flex_direction: FlexDirection::Row,
@@ -583,7 +658,7 @@ fn setup_debug_ui(mut commands: Commands, panel_state: Res<DebugPanelState>, ass
                             spawn_debug_button!(row, "+", DebugButton::RotXPlus);
                         });
 
-                    // Rotation Y row (yaw - side to side)
+                    // Rotation Y row
                     content
                         .spawn(Node {
                             flex_direction: FlexDirection::Row,
@@ -655,6 +730,158 @@ fn setup_debug_ui(mut commands: Commands, panel_state: Res<DebugPanelState>, ass
                             spawn_debug_button!(row, ">", DebugButton::AnimNext);
                         });
 
+                    // Post-processing section header
+                    content.spawn((
+                        Text::new("— POST PROCESS —"),
+                        TextFont { font_size: 10.0, ..default() },
+                        TextColor(Color::srgb(1.0, 0.8, 0.3)),
+                        Node { margin: UiRect::top(Val::Px(8.0)), ..default() },
+                    ));
+
+                    // Bloom intensity slider
+                    content
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Px(2.0),
+                            ..default()
+                        })
+                        .with_children(|col| {
+                            col.spawn(Node {
+                                flex_direction: FlexDirection::Row,
+                                justify_content: JustifyContent::SpaceBetween,
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    Text::new("Bloom"),
+                                    TextFont { font_size: 10.0, ..default() },
+                                    TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                                ));
+                                row.spawn((
+                                    BloomIntensityValue,
+                                    Text::new("0.30"),
+                                    TextFont { font_size: 10.0, ..default() },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+                            col.spawn((
+                                BloomIntensitySlider,
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Px(12.0),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgba(0.1, 0.1, 0.15, 1.0)),
+                                BorderRadius::all(Val::Px(2.0)),
+                            ))
+                            .with_child((
+                                Node {
+                                    width: Val::Percent(30.0), // 0.3 out of 1.0
+                                    height: Val::Percent(100.0),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgb(0.3, 0.5, 0.8)),
+                                BorderRadius::left(Val::Px(2.0)),
+                            ));
+                        });
+
+                    // Contrast slider
+                    content
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Px(2.0),
+                            ..default()
+                        })
+                        .with_children(|col| {
+                            col.spawn(Node {
+                                flex_direction: FlexDirection::Row,
+                                justify_content: JustifyContent::SpaceBetween,
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    Text::new("Contrast"),
+                                    TextFont { font_size: 10.0, ..default() },
+                                    TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                                ));
+                                row.spawn((
+                                    ContrastValue,
+                                    Text::new("1.00"),
+                                    TextFont { font_size: 10.0, ..default() },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+                            col.spawn((
+                                ContrastSlider,
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Px(12.0),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgba(0.1, 0.1, 0.15, 1.0)),
+                                BorderRadius::all(Val::Px(2.0)),
+                            ))
+                            .with_child((
+                                Node {
+                                    width: Val::Percent(50.0), // 1.0 normalized to 0.5 in range 0-2
+                                    height: Val::Percent(100.0),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgb(0.3, 0.5, 0.8)),
+                                BorderRadius::left(Val::Px(2.0)),
+                            ));
+                        });
+
+                    // Saturation slider
+                    content
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Px(2.0),
+                            ..default()
+                        })
+                        .with_children(|col| {
+                            col.spawn(Node {
+                                flex_direction: FlexDirection::Row,
+                                justify_content: JustifyContent::SpaceBetween,
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    Text::new("Saturation"),
+                                    TextFont { font_size: 10.0, ..default() },
+                                    TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                                ));
+                                row.spawn((
+                                    SaturationValue,
+                                    Text::new("1.00"),
+                                    TextFont { font_size: 10.0, ..default() },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+                            col.spawn((
+                                SaturationSlider,
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Px(12.0),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgba(0.1, 0.1, 0.15, 1.0)),
+                                BorderRadius::all(Val::Px(2.0)),
+                            ))
+                            .with_child((
+                                Node {
+                                    width: Val::Percent(50.0), // 1.0 normalized to 0.5 in range 0-2
+                                    height: Val::Percent(100.0),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgb(0.3, 0.5, 0.8)),
+                                BorderRadius::left(Val::Px(2.0)),
+                            ));
+                        });
+
                     // Keyboard help
                     content.spawn((
                         Text::new("WASD QE RF +/-"),
@@ -675,15 +902,19 @@ fn handle_debug_buttons(
     mut debug_render_context: Option<ResMut<DebugRenderContext>>,
     mut char_query: Query<
         &mut Transform,
-        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
+        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     mut scene_query: Query<
         &mut Transform,
-        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>),
+        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     mut camera_query: Query<
         &mut Transform,
-        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>),
+        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<WarehouseScene>),
+    >,
+    mut warehouse_query: Query<
+        (&mut Transform, &mut Visibility),
+        (With<WarehouseScene>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
     >,
 ) {
     let move_amount = 0.1;
@@ -699,11 +930,18 @@ fn handle_debug_buttons(
                     DebugButton::SelectCharacter => *target = DebugTarget::Character,
                     DebugButton::SelectScene => *target = DebugTarget::Scene,
                     DebugButton::SelectCamera => *target = DebugTarget::Camera,
+                    DebugButton::SelectWarehouse => {
+                        *target = DebugTarget::Warehouse;
+                        // Make warehouse visible when selected
+                        if let Ok((_, mut vis)) = warehouse_query.single_mut() {
+                            *vis = Visibility::Visible;
+                        }
+                    }
                     DebugButton::SavePositions => {
-                        save_positions(&char_query, &scene_query, &camera_query, panel_state.current_animation_index);
+                        save_positions(&char_query, &scene_query, &camera_query, &warehouse_query, panel_state.current_animation_index);
                     }
                     DebugButton::ResetPositions => {
-                        reset_positions(&mut char_query, &mut scene_query, &mut camera_query);
+                        reset_positions(&mut char_query, &mut scene_query, &mut camera_query, &mut warehouse_query);
                     }
                     DebugButton::ToggleSkeleton => {
                         panel_state.show_skeleton = !panel_state.show_skeleton;
@@ -734,10 +972,11 @@ fn handle_debug_buttons(
                     }
                     _ => {
                         // Position/scale/rotation adjustments
-                        let transform = match *target {
+                        let transform: Option<Mut<Transform>> = match *target {
                             DebugTarget::Character => char_query.iter_mut().next(),
                             DebugTarget::Scene => scene_query.iter_mut().next(),
                             DebugTarget::Camera => camera_query.iter_mut().next(),
+                            DebugTarget::Warehouse => warehouse_query.iter_mut().next().map(|(t, _)| t),
                         };
 
                         if let Some(mut t) = transform {
@@ -770,6 +1009,7 @@ fn handle_debug_buttons(
                     (DebugButton::SelectCharacter, DebugTarget::Character)
                         | (DebugButton::SelectScene, DebugTarget::Scene)
                         | (DebugButton::SelectCamera, DebugTarget::Camera)
+                        | (DebugButton::SelectWarehouse, DebugTarget::Warehouse)
                 ) || matches!(
                     button,
                     DebugButton::ToggleSkeleton if panel_state.show_skeleton
@@ -792,25 +1032,30 @@ fn keyboard_debug_controls(
     target: Res<DebugTarget>,
     mut char_query: Query<
         &mut Transform,
-        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
+        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     mut scene_query: Query<
         &mut Transform,
-        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>),
+        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     mut camera_query: Query<
         &mut Transform,
-        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>),
+        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<WarehouseScene>),
+    >,
+    mut warehouse_query: Query<
+        &mut Transform,
+        (With<WarehouseScene>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
     >,
     time: Res<Time>,
 ) {
     let move_speed = 2.0 * time.delta_secs();
     let scale_speed = 1.5 * time.delta_secs();
 
-    let transform = match *target {
+    let transform: Option<Mut<Transform>> = match *target {
         DebugTarget::Character => char_query.iter_mut().next(),
         DebugTarget::Scene => scene_query.iter_mut().next(),
         DebugTarget::Camera => camera_query.iter_mut().next(),
+        DebugTarget::Warehouse => warehouse_query.iter_mut().next(),
     };
 
     let rot_speed = 2.0 * time.delta_secs();
@@ -863,15 +1108,19 @@ fn update_debug_display(
     target: Res<DebugTarget>,
     char_query: Query<
         &Transform,
-        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
+        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     scene_query: Query<
         &Transform,
-        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>),
+        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     camera_query: Query<
         &Transform,
-        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>),
+        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<WarehouseScene>),
+    >,
+    warehouse_query: Query<
+        &Transform,
+        (With<WarehouseScene>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
     >,
     mut text_query: Query<&mut Text, With<DebugDisplayText>>,
 ) {
@@ -883,6 +1132,7 @@ fn update_debug_display(
         DebugTarget::Character => "CHARACTER",
         DebugTarget::Scene => "SCENE",
         DebugTarget::Camera => "CAMERA",
+        DebugTarget::Warehouse => "WAREHOUSE",
     };
 
     let (pos, scale, rot_y) = match *target {
@@ -910,6 +1160,14 @@ fn update_debug_display(
                 (t.translation, t.scale.x, y)
             })
             .unwrap_or((Vec3::ZERO, 1.0, 0.0)),
+        DebugTarget::Warehouse => warehouse_query
+            .iter()
+            .next()
+            .map(|t| {
+                let (_, y, _) = t.rotation.to_euler(EulerRot::YXZ);
+                (t.translation, t.scale.x, y)
+            })
+            .unwrap_or((Vec3::ZERO, 1.0, 0.0)),
     };
 
     **text = format!(
@@ -921,15 +1179,19 @@ fn update_debug_display(
 fn save_positions(
     char_query: &Query<
         &mut Transform,
-        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
+        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     scene_query: &Query<
         &mut Transform,
-        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>),
+        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     camera_query: &Query<
         &mut Transform,
-        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>),
+        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<WarehouseScene>),
+    >,
+    warehouse_query: &Query<
+        (&mut Transform, &mut Visibility),
+        (With<WarehouseScene>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
     >,
     animation_index: usize,
 ) {
@@ -977,6 +1239,15 @@ fn save_positions(
         ));
     }
 
+    if let Some((t, _)) = warehouse_query.iter().next() {
+        let (axis, angle) = t.rotation.to_axis_angle();
+        output.push_str(&format!(
+            "WAREHOUSE (MapConfig):\n  map_position: Vec3::new({:.4}, {:.4}, {:.4})\n  map_scale: {:.6}\n  map_rotation: Quat::from_axis_angle(Vec3::new({:.4}, {:.4}, {:.4}), {:.4})\n\n",
+            t.translation.x, t.translation.y, t.translation.z, t.scale.x,
+            axis.x, axis.y, axis.z, angle
+        ));
+    }
+
     // Generate copy-paste ready code
     output.push_str("// Copy-paste ready code:\n");
     if let Some(t) = char_query.iter().next() {
@@ -991,6 +1262,14 @@ fn save_positions(
         let (axis, angle) = t.rotation.to_axis_angle();
         output.push_str(&format!(
             "SCENE: Transform::from_xyz({:.4}, {:.4}, {:.4}).with_scale(Vec3::splat({:.6})).with_rotation(Quat::from_axis_angle(Vec3::new({:.4}, {:.4}, {:.4}), {:.4}))\n",
+            t.translation.x, t.translation.y, t.translation.z, t.scale.x,
+            axis.x, axis.y, axis.z, angle
+        ));
+    }
+    if let Some((t, _)) = warehouse_query.iter().next() {
+        let (axis, angle) = t.rotation.to_axis_angle();
+        output.push_str(&format!(
+            "// MapConfig for level.rs:\nMapConfig {{\n    player_spawn: Vec3::new(0.0, 2.0, 0.0),\n    map_position: Vec3::new({:.4}, {:.4}, {:.4}),\n    map_scale: {:.6},\n    map_rotation: Quat::from_axis_angle(Vec3::new({:.4}, {:.4}, {:.4}), {:.4}),\n    post_process: PostProcessSettings::default(),\n}}\n",
             t.translation.x, t.translation.y, t.translation.z, t.scale.x,
             axis.x, axis.y, axis.z, angle
         ));
@@ -1018,15 +1297,19 @@ fn save_positions(
 fn reset_positions(
     char_query: &mut Query<
         &mut Transform,
-        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
+        (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     scene_query: &mut Query<
         &mut Transform,
-        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>),
+        (With<ArmoryScene>, Without<HomePlayerModel>, Without<HomeSceneCamera>, Without<WarehouseScene>),
     >,
     camera_query: &mut Query<
         &mut Transform,
-        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>),
+        (With<HomeSceneCamera>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<WarehouseScene>),
+    >,
+    warehouse_query: &mut Query<
+        (&mut Transform, &mut Visibility),
+        (With<WarehouseScene>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
     >,
 ) {
     for mut t in char_query.iter_mut() {
@@ -1042,6 +1325,12 @@ fn reset_positions(
     for mut t in camera_query.iter_mut() {
         *t = Transform::from_xyz(-0.0329, 2.7334, 5.4840)
             .with_rotation(Quat::from_axis_angle(Vec3::new(-1.0, 0.0, 0.0), 0.1244));
+    }
+    for (mut t, mut vis) in warehouse_query.iter_mut() {
+        t.translation = Vec3::ZERO;
+        t.scale = Vec3::splat(1.0);
+        t.rotation = Quat::IDENTITY;
+        *vis = Visibility::Hidden;
     }
 }
 
@@ -1298,5 +1587,131 @@ fn find_animation_player_entity(
 fn cleanup_home_scene(mut commands: Commands, query: Query<Entity, With<HomeSceneEntity>>) {
     for entity in &query {
         commands.entity(entity).despawn();
+    }
+}
+
+/// Handle post-processing slider interactions
+fn handle_postprocess_sliders(
+    bloom_slider: Query<(&Interaction, &Node, &GlobalTransform), With<BloomIntensitySlider>>,
+    contrast_slider: Query<
+        (&Interaction, &Node, &GlobalTransform),
+        (With<ContrastSlider>, Without<BloomIntensitySlider>),
+    >,
+    saturation_slider: Query<
+        (&Interaction, &Node, &GlobalTransform),
+        (With<SaturationSlider>, Without<BloomIntensitySlider>, Without<ContrastSlider>),
+    >,
+    windows: Query<&Window>,
+    mut map_config: ResMut<MapConfig>,
+    mut bloom_query: Query<&mut Bloom, With<HomeSceneCamera>>,
+) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
+
+    let Some(cursor_pos) = window.cursor_position() else {
+        return;
+    };
+
+    // Handle bloom intensity slider (range 0.0 - 1.0)
+    for (interaction, node, transform) in &bloom_slider {
+        if *interaction == Interaction::Pressed {
+            if let Some(new_value) = calculate_postprocess_slider_value(cursor_pos, node, transform, 0.0, 1.0) {
+                map_config.post_process.bloom_intensity = new_value;
+                // Update the actual bloom component
+                if let Ok(mut bloom) = bloom_query.single_mut() {
+                    bloom.intensity = new_value;
+                }
+            }
+        }
+    }
+
+    // Handle contrast slider (range 0.0 - 2.0)
+    for (interaction, node, transform) in &contrast_slider {
+        if *interaction == Interaction::Pressed {
+            if let Some(new_value) = calculate_postprocess_slider_value(cursor_pos, node, transform, 0.0, 2.0) {
+                map_config.post_process.contrast = new_value;
+            }
+        }
+    }
+
+    // Handle saturation slider (range 0.0 - 2.0)
+    for (interaction, node, transform) in &saturation_slider {
+        if *interaction == Interaction::Pressed {
+            if let Some(new_value) = calculate_postprocess_slider_value(cursor_pos, node, transform, 0.0, 2.0) {
+                map_config.post_process.saturation = new_value;
+            }
+        }
+    }
+}
+
+/// Calculate slider value from cursor position
+fn calculate_postprocess_slider_value(
+    cursor_pos: Vec2,
+    node: &Node,
+    transform: &GlobalTransform,
+    min: f32,
+    max: f32,
+) -> Option<f32> {
+    let width = match node.width {
+        Val::Px(w) => w,
+        Val::Percent(p) => p * 5.0,
+        _ => return None,
+    };
+
+    let left = transform.translation().x - width / 2.0;
+    let normalized = ((cursor_pos.x - left) / width).clamp(0.0, 1.0);
+    Some(min + normalized * (max - min))
+}
+
+/// Update post-processing value displays and slider fills
+fn update_postprocess_displays(
+    map_config: Res<MapConfig>,
+    mut bloom_value: Query<&mut Text, (With<BloomIntensityValue>, Without<ContrastValue>, Without<SaturationValue>)>,
+    mut contrast_value: Query<&mut Text, (With<ContrastValue>, Without<BloomIntensityValue>, Without<SaturationValue>)>,
+    mut saturation_value: Query<&mut Text, (With<SaturationValue>, Without<BloomIntensityValue>, Without<ContrastValue>)>,
+    bloom_slider: Query<&Children, With<BloomIntensitySlider>>,
+    contrast_slider: Query<&Children, (With<ContrastSlider>, Without<BloomIntensitySlider>)>,
+    saturation_slider: Query<&Children, (With<SaturationSlider>, Without<BloomIntensitySlider>, Without<ContrastSlider>)>,
+    mut fill_query: Query<&mut Node, Without<BloomIntensitySlider>>,
+) {
+    if !map_config.is_changed() {
+        return;
+    }
+
+    // Update bloom display
+    if let Ok(mut text) = bloom_value.single_mut() {
+        **text = format!("{:.2}", map_config.post_process.bloom_intensity);
+    }
+    if let Ok(children) = bloom_slider.single() {
+        for child in children.iter() {
+            if let Ok(mut node) = fill_query.get_mut(child) {
+                node.width = Val::Percent(map_config.post_process.bloom_intensity * 100.0);
+            }
+        }
+    }
+
+    // Update contrast display
+    if let Ok(mut text) = contrast_value.single_mut() {
+        **text = format!("{:.2}", map_config.post_process.contrast);
+    }
+    if let Ok(children) = contrast_slider.single() {
+        for child in children.iter() {
+            if let Ok(mut node) = fill_query.get_mut(child) {
+                node.width = Val::Percent((map_config.post_process.contrast / 2.0) * 100.0);
+            }
+        }
+    }
+
+    // Update saturation display
+    if let Ok(mut text) = saturation_value.single_mut() {
+        **text = format!("{:.2}", map_config.post_process.saturation);
+    }
+    if let Ok(children) = saturation_slider.single() {
+        for child in children.iter() {
+            if let Ok(mut node) = fill_query.get_mut(child) {
+                node.width = Val::Percent((map_config.post_process.saturation / 2.0) * 100.0);
+            }
+        }
     }
 }
