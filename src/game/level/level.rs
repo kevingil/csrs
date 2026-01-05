@@ -1,3 +1,4 @@
+use crate::game::config::MapConfig;
 use crate::game::GameState;
 
 use super::targets;
@@ -24,12 +25,19 @@ impl Plugin for LevelPlugin {
             .add_systems(OnExit(GameState::Playing), cleanup_level);
     }
 }
-fn init_level(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Load the map model
+
+fn init_level(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    map_config: Res<MapConfig>,
+) {
+    // Load the map model using MapConfig transform settings
     commands.spawn((
         LevelEntity,
         SceneRoot(asset_server.load("models/map/warehouse_map.glb#Scene0")),
-        Transform::default(),
+        Transform::from_translation(map_config.map_position)
+            .with_scale(Vec3::splat(map_config.map_scale))
+            .with_rotation(map_config.map_rotation),
     ));
 
     // Invisible floor collider for physics (large flat plane)
