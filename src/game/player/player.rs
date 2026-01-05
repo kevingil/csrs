@@ -98,7 +98,7 @@ fn init_player(
         .id();
 
     // Gun model - will be child of camera
-    let gun_model = asset_server.load("models/ak.glb#Scene0");
+    let gun_model = asset_server.load("models/weapons/ak.glb#Scene0");
     let gun_entity = commands.spawn((PlayerEntity, SceneRoot(gun_model))).id();
 
     // Tracer spawn spot - child of camera

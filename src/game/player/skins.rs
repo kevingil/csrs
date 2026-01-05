@@ -153,14 +153,14 @@ impl Default for SkinRegistry {
                 SkinDefinition {
                     id: SkinId::Soldier,
                     name: "Soldier",
-                    model_path: "models/soldier_1_combat_online_fixed.glb#Scene0",
+                    model_path: "models/skins/attacker_default_skin.glb#Scene0",
                     side: PlayerSide::Attacker,
                 },
                 // Police - Defender
                 SkinDefinition {
                     id: SkinId::Police,
                     name: "Police Defender",
-                    model_path: "models/police_ru_combat_online_fixed.glb#Scene0",
+                    model_path: "models/skins/defense_default_skin.glb#Scene0",
                     side: PlayerSide::Defender,
                 },
             ],

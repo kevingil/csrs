@@ -1,10 +1,7 @@
-//! Layered animation system for player models.
+//! Full-body animation system for player models using Mixamo animations.
 //!
-//! Uses a two-layer approach for competitive FPS gameplay:
-//! - Lower body layer: Locomotion (idle, walk, run, crouch)
-//! - Upper body layer: Weapon-specific animations (idle, reload, fire)
-//!
-//! All player skins share the same skeleton and animations for fairness.
+//! Uses complete body animations (not split upper/lower) for smooth transitions.
+//! All player skins share the same Mixamo skeleton and animations.
 
 use std::time::Duration;
 
@@ -15,178 +12,123 @@ use bevy_fps_controller::controller::LogicalPlayer;
 use super::player_model::PlayerModel;
 
 // ============================================================================
-// TYPES & ENUMS
+// ANIMATION STATE
 // ============================================================================
 
-/// Weapon types that affect upper body animations
+/// Player animation state - determines which full-body animation to play
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
-pub enum WeaponType {
-    #[default]
-    Rifle,
-    Pistol,
-    Sniper,
-    Knife,
-}
-
-impl WeaponType {
-    /// Get all weapon types
-    pub fn all() -> &'static [WeaponType] {
-        &[WeaponType::Rifle, WeaponType::Pistol, WeaponType::Sniper, WeaponType::Knife]
-    }
-
-    /// Get the reload duration for this weapon type
-    pub fn reload_duration(&self) -> f32 {
-        match self {
-            WeaponType::Rifle => 2.5,
-            WeaponType::Pistol => 1.8,
-            WeaponType::Sniper => 3.5,
-            WeaponType::Knife => 0.0, // Knife doesn't reload
-        }
-    }
-
-    /// Get the fire rate cooldown for this weapon type
-    pub fn fire_cooldown(&self) -> f32 {
-        match self {
-            WeaponType::Rifle => 0.1,
-            WeaponType::Pistol => 0.15,
-            WeaponType::Sniper => 1.5,
-            WeaponType::Knife => 0.5,
-        }
-    }
-}
-
-/// Lower body movement states (locomotion layer)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum MovementState {
+pub enum AnimationState {
     #[default]
     Idle,
     Walking,
+    WalkingBackward,
     Running,
-    CrouchIdle,
-    CrouchWalking,
+    RunningBackward,
+    StrafeLeft,
+    StrafeRight,
+    Firing,
+    Jumping,
+    JumpingBackward,
+    Dying,
 }
 
-impl MovementState {
-    /// Get the animation node index for this movement state
-    pub fn node_index(&self, animations: &SharedAnimations) -> AnimationNodeIndex {
+impl AnimationState {
+    /// Whether this animation should loop
+    pub fn should_loop(&self) -> bool {
         match self {
-            MovementState::Idle => animations.lower_body.idle,
-            MovementState::Walking => animations.lower_body.walk,
-            MovementState::Running => animations.lower_body.run,
-            MovementState::CrouchIdle => animations.lower_body.crouch_idle,
-            MovementState::CrouchWalking => animations.lower_body.crouch_walk,
+            AnimationState::Idle => true,
+            AnimationState::Walking => true,
+            AnimationState::WalkingBackward => true,
+            AnimationState::Running => true,
+            AnimationState::RunningBackward => true,
+            AnimationState::StrafeLeft => true,
+            AnimationState::StrafeRight => true,
+            AnimationState::Firing => false,
+            AnimationState::Jumping => false,
+            AnimationState::JumpingBackward => false,
+            AnimationState::Dying => false,
         }
     }
-}
-
-/// Upper body action states (weapon layer)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum UpperBodyAction {
-    #[default]
-    Idle,
-    Reloading,
-    Firing,
 }
 
 // ============================================================================
 // ANIMATION INDICES
 // ============================================================================
 
-/// Path to the standard animation model containing skeleton and all animations.
+/// Path to the animation model containing all animations.
 pub const ANIMATION_MODEL_PATH: &str = "models/player_animations.glb";
 
-/// Animation clip indices in the GLB file.
-/// Lower body animations (universal across all weapons)
-pub mod lower_body_indices {
-    pub const IDLE: usize = 0;
-    pub const WALK: usize = 1;
-    pub const RUN: usize = 2;
-    pub const CROUCH_IDLE: usize = 3;
-    pub const CROUCH_WALK: usize = 4;
+/// Animation clip indices matching NLA track order in player_animations.glb
+/// Order: top to bottom in NLA Editor = index 0 to N
+pub mod animation_indices {
+    pub const RIFLE_FIRING: usize = 0;
+    pub const RIFLE_JUMP_BACKWARD: usize = 1;
+    pub const RIFLE_JUMP: usize = 2;
+    pub const RIFLE_AIM_IDLE: usize = 3;
+    pub const RIFLE_RUN: usize = 4;
+    pub const RIFLE_RUN_BACKWARD: usize = 5;
+    pub const RIFLE_START_WALKING: usize = 6;
+    pub const RIFLE_START_WALKING_BACKWARD: usize = 7;
+    pub const RIFLE_STOP_WALKING: usize = 8;
+    pub const RIFLE_STRAFE_LEFT: usize = 9;
+    pub const RIFLE_STRAFE_RIGHT: usize = 10;
+    pub const RIFLE_STOP_WALKING_BACKWARD: usize = 11;
+    pub const RIFLE_WALKING: usize = 12;
+    pub const RIFLE_WALK_BACKWARD: usize = 13;
+    pub const RIFLE_DIE_FORWARD: usize = 14;
+    pub const RIFLE_HOME_IDLE: usize = 15;
 }
 
-/// Upper body animation indices per weapon type
-pub mod upper_body_indices {
-    pub mod rifle {
-        pub const IDLE: usize = 5;
-        pub const RELOAD: usize = 6;
-        pub const FIRE: usize = 7;
-    }
-    pub mod pistol {
-        pub const IDLE: usize = 8;
-        pub const RELOAD: usize = 9;
-        pub const FIRE: usize = 10;
-    }
-    pub mod sniper {
-        pub const IDLE: usize = 11;
-        pub const RELOAD: usize = 12;
-        pub const FIRE: usize = 13;
-    }
-    pub mod knife {
-        pub const IDLE: usize = 14;
-        pub const ATTACK: usize = 15;
-    }
-}
-
-/// Total number of animation clips expected
+/// Total number of animation clips
 pub const TOTAL_ANIMATION_COUNT: usize = 16;
-
-// ============================================================================
-// ANIMATION NODES
-// ============================================================================
-
-/// Animation nodes for lower body locomotion
-#[derive(Debug, Clone)]
-pub struct LowerBodyNodes {
-    pub idle: AnimationNodeIndex,
-    pub walk: AnimationNodeIndex,
-    pub run: AnimationNodeIndex,
-    pub crouch_idle: AnimationNodeIndex,
-    pub crouch_walk: AnimationNodeIndex,
-}
-
-/// Animation nodes for a single weapon's upper body animations
-#[derive(Debug, Clone)]
-pub struct WeaponAnimNodes {
-    pub idle: AnimationNodeIndex,
-    pub reload: AnimationNodeIndex,
-    pub fire: AnimationNodeIndex,
-}
-
-/// All weapon animation nodes
-#[derive(Debug, Clone)]
-pub struct UpperBodyNodes {
-    pub rifle: WeaponAnimNodes,
-    pub pistol: WeaponAnimNodes,
-    pub sniper: WeaponAnimNodes,
-    pub knife: WeaponAnimNodes,
-}
-
-impl UpperBodyNodes {
-    /// Get animation nodes for a specific weapon type
-    pub fn for_weapon(&self, weapon: WeaponType) -> &WeaponAnimNodes {
-        match weapon {
-            WeaponType::Rifle => &self.rifle,
-            WeaponType::Pistol => &self.pistol,
-            WeaponType::Sniper => &self.sniper,
-            WeaponType::Knife => &self.knife,
-        }
-    }
-}
 
 // ============================================================================
 // SHARED ANIMATIONS RESOURCE
 // ============================================================================
+
+/// Animation node indices for each state
+#[derive(Debug, Clone)]
+pub struct AnimationNodes {
+    pub idle: AnimationNodeIndex,
+    pub walking: AnimationNodeIndex,
+    pub walking_backward: AnimationNodeIndex,
+    pub running: AnimationNodeIndex,
+    pub running_backward: AnimationNodeIndex,
+    pub strafe_left: AnimationNodeIndex,
+    pub strafe_right: AnimationNodeIndex,
+    pub firing: AnimationNodeIndex,
+    pub jumping: AnimationNodeIndex,
+    pub jumping_backward: AnimationNodeIndex,
+    pub dying: AnimationNodeIndex,
+    pub home_idle: AnimationNodeIndex,
+}
 
 /// Shared animation data - loaded once, used by all players.
 #[derive(Resource)]
 pub struct SharedAnimations {
     /// The animation graph handle
     pub graph: Handle<AnimationGraph>,
-    /// Lower body (locomotion) animation nodes
-    pub lower_body: LowerBodyNodes,
-    /// Upper body (weapon) animation nodes
-    pub upper_body: UpperBodyNodes,
+    /// Animation nodes for each state
+    pub nodes: AnimationNodes,
+}
+
+impl SharedAnimations {
+    /// Get the animation node for a given state
+    pub fn get_node(&self, state: AnimationState) -> AnimationNodeIndex {
+        match state {
+            AnimationState::Idle => self.nodes.idle,
+            AnimationState::Walking => self.nodes.walking,
+            AnimationState::WalkingBackward => self.nodes.walking_backward,
+            AnimationState::Running => self.nodes.running,
+            AnimationState::RunningBackward => self.nodes.running_backward,
+            AnimationState::StrafeLeft => self.nodes.strafe_left,
+            AnimationState::StrafeRight => self.nodes.strafe_right,
+            AnimationState::Firing => self.nodes.firing,
+            AnimationState::Jumping => self.nodes.jumping,
+            AnimationState::JumpingBackward => self.nodes.jumping_backward,
+            AnimationState::Dying => self.nodes.dying,
+        }
+    }
 }
 
 // ============================================================================
@@ -194,64 +136,33 @@ pub struct SharedAnimations {
 // ============================================================================
 
 /// Per-player animation controller component.
-/// Tracks both lower body (movement) and upper body (weapon) animation states.
 #[derive(Component)]
 pub struct PlayerAnimationController {
-    // Lower body state (locomotion)
-    pub movement: MovementState,
-    pub prev_movement: MovementState,
-    pub is_crouching: bool,
-    
-    // Upper body state (weapon)
-    pub weapon: WeaponType,
-    pub prev_weapon: WeaponType,
-    pub upper_action: UpperBodyAction,
-    pub prev_upper_action: UpperBodyAction,
-    
-    // Action timers
-    pub reload_timer: f32,
-    pub fire_timer: f32,
-    
-    // Animation player entity reference (set after scene loads)
+    /// Current animation state
+    pub state: AnimationState,
+    /// Previous state for change detection
+    pub prev_state: AnimationState,
+    /// Animation player entity reference
     pub animation_player_entity: Option<Entity>,
+    /// Timer for one-shot animations (firing, etc.)
+    pub action_timer: f32,
 }
 
 impl Default for PlayerAnimationController {
     fn default() -> Self {
         Self {
-            movement: MovementState::Idle,
-            prev_movement: MovementState::Idle,
-            is_crouching: false,
-            weapon: WeaponType::Rifle,
-            prev_weapon: WeaponType::Rifle,
-            upper_action: UpperBodyAction::Idle,
-            prev_upper_action: UpperBodyAction::Idle,
-            reload_timer: 0.0,
-            fire_timer: 0.0,
+            state: AnimationState::Idle,
+            prev_state: AnimationState::Idle,
             animation_player_entity: None,
+            action_timer: 0.0,
         }
     }
 }
 
 impl PlayerAnimationController {
-    /// Check if lower body state changed
-    pub fn movement_changed(&self) -> bool {
-        self.movement != self.prev_movement
-    }
-    
-    /// Check if upper body state changed (action or weapon)
-    pub fn upper_body_changed(&self) -> bool {
-        self.upper_action != self.prev_upper_action || self.weapon != self.prev_weapon
-    }
-    
-    /// Get the current upper body animation node
-    pub fn upper_body_node(&self, animations: &SharedAnimations) -> AnimationNodeIndex {
-        let weapon_nodes = animations.upper_body.for_weapon(self.weapon);
-        match self.upper_action {
-            UpperBodyAction::Idle => weapon_nodes.idle,
-            UpperBodyAction::Reloading => weapon_nodes.reload,
-            UpperBodyAction::Firing => weapon_nodes.fire,
-        }
+    /// Check if state changed
+    pub fn state_changed(&self) -> bool {
+        self.state != self.prev_state
     }
 }
 
@@ -259,73 +170,60 @@ impl PlayerAnimationController {
 // CONSTANTS
 // ============================================================================
 
-/// Velocity thresholds for movement state detection
+/// Velocity thresholds for movement detection
 const IDLE_THRESHOLD: f32 = 0.5;
 const WALK_THRESHOLD: f32 = 4.0;
 
-/// Blend duration for animation transitions
-const BLEND_DURATION: f32 = 0.2;
+/// Animation transition blend duration
+const BLEND_DURATION: f32 = 0.15;
+
+/// Fire animation duration
+const FIRE_DURATION: f32 = 0.3;
 
 // ============================================================================
 // SYSTEMS
 // ============================================================================
 
-/// Load shared animations from the standard animation model.
-/// Called once at startup.
+/// Load shared animations from the animation model.
 pub fn load_shared_animations(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
 ) {
-    // Load all animation clips from the standard model
+    use animation_indices::*;
+    
+    // Load all animation clips
     let clips: Vec<Handle<AnimationClip>> = (0..TOTAL_ANIMATION_COUNT)
         .map(|i| asset_server.load(GltfAssetLabel::Animation(i).from_asset(ANIMATION_MODEL_PATH)))
         .collect();
     
-    // Build animation graph from clips
+    // Build animation graph
     let (graph, indices) = AnimationGraph::from_clips(clips);
     let graph_handle = graphs.add(graph);
     
-    // Map indices to named nodes
-    let lower_body = LowerBodyNodes {
-        idle: indices[lower_body_indices::IDLE],
-        walk: indices[lower_body_indices::WALK],
-        run: indices[lower_body_indices::RUN],
-        crouch_idle: indices[lower_body_indices::CROUCH_IDLE],
-        crouch_walk: indices[lower_body_indices::CROUCH_WALK],
-    };
-    
-    let upper_body = UpperBodyNodes {
-        rifle: WeaponAnimNodes {
-            idle: indices[upper_body_indices::rifle::IDLE],
-            reload: indices[upper_body_indices::rifle::RELOAD],
-            fire: indices[upper_body_indices::rifle::FIRE],
-        },
-        pistol: WeaponAnimNodes {
-            idle: indices[upper_body_indices::pistol::IDLE],
-            reload: indices[upper_body_indices::pistol::RELOAD],
-            fire: indices[upper_body_indices::pistol::FIRE],
-        },
-        sniper: WeaponAnimNodes {
-            idle: indices[upper_body_indices::sniper::IDLE],
-            reload: indices[upper_body_indices::sniper::RELOAD],
-            fire: indices[upper_body_indices::sniper::FIRE],
-        },
-        knife: WeaponAnimNodes {
-            idle: indices[upper_body_indices::knife::IDLE],
-            reload: indices[upper_body_indices::knife::ATTACK], // Knife uses attack instead of reload
-            fire: indices[upper_body_indices::knife::ATTACK],   // Knife attack for both
-        },
+    // Map indices to animation nodes
+    let nodes = AnimationNodes {
+        idle: indices[RIFLE_AIM_IDLE],
+        walking: indices[RIFLE_WALKING],
+        walking_backward: indices[RIFLE_WALK_BACKWARD],
+        running: indices[RIFLE_RUN],
+        running_backward: indices[RIFLE_RUN_BACKWARD],
+        strafe_left: indices[RIFLE_STRAFE_LEFT],
+        strafe_right: indices[RIFLE_STRAFE_RIGHT],
+        firing: indices[RIFLE_FIRING],
+        jumping: indices[RIFLE_JUMP],
+        jumping_backward: indices[RIFLE_JUMP_BACKWARD],
+        dying: indices[RIFLE_DIE_FORWARD],
+        home_idle: indices[RIFLE_HOME_IDLE],
     };
     
     commands.insert_resource(SharedAnimations {
         graph: graph_handle,
-        lower_body,
-        upper_body,
+        nodes,
     });
 }
 
-/// Detect animation state based on player velocity and input.
+/// Detect animation state based on player input and velocity.
 pub fn detect_animation_state(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -336,87 +234,68 @@ pub fn detect_animation_state(
     for (mut controller, player_model) in &mut controller_query {
         let delta = time.delta_secs();
         
-        // Store previous states for change detection
-        controller.prev_movement = controller.movement;
-        controller.prev_upper_action = controller.upper_action;
-        controller.prev_weapon = controller.weapon;
+        // Store previous state
+        controller.prev_state = controller.state;
         
-        // --- Crouch Detection ---
-        controller.is_crouching = keyboard.pressed(KeyCode::ControlLeft) 
-            || keyboard.pressed(KeyCode::ControlRight);
-        
-        // --- Weapon Switching ---
-        if keyboard.just_pressed(KeyCode::Digit1) {
-            controller.weapon = WeaponType::Rifle;
-        } else if keyboard.just_pressed(KeyCode::Digit2) {
-            controller.weapon = WeaponType::Pistol;
-        } else if keyboard.just_pressed(KeyCode::Digit3) {
-            controller.weapon = WeaponType::Sniper;
-        } else if keyboard.just_pressed(KeyCode::Digit4) {
-            controller.weapon = WeaponType::Knife;
+        // Update action timer
+        if controller.action_timer > 0.0 {
+            controller.action_timer -= delta;
         }
         
-        // --- Upper Body Action State ---
-        // Update timers
-        if controller.reload_timer > 0.0 {
-            controller.reload_timer -= delta;
-        }
-        if controller.fire_timer > 0.0 {
-            controller.fire_timer -= delta;
+        // Check for firing (takes priority)
+        if mouse.just_pressed(MouseButton::Left) {
+            controller.state = AnimationState::Firing;
+            controller.action_timer = FIRE_DURATION;
+            continue;
         }
         
-        // Reload input (R key)
-        if keyboard.just_pressed(KeyCode::KeyR) 
-            && controller.upper_action != UpperBodyAction::Reloading 
-            && controller.weapon != WeaponType::Knife 
-        {
-            controller.upper_action = UpperBodyAction::Reloading;
-            controller.reload_timer = controller.weapon.reload_duration();
+        // If in one-shot animation, wait for it to finish
+        if controller.action_timer > 0.0 {
+            continue;
         }
         
-        // Fire input (Left mouse)
-        if mouse.just_pressed(MouseButton::Left) && controller.fire_timer <= 0.0 {
-            controller.upper_action = UpperBodyAction::Firing;
-            controller.fire_timer = controller.weapon.fire_cooldown();
-        }
-        
-        // Return to idle when action completes
-        if controller.upper_action == UpperBodyAction::Reloading && controller.reload_timer <= 0.0 {
-            controller.upper_action = UpperBodyAction::Idle;
-        }
-        if controller.upper_action == UpperBodyAction::Firing && controller.fire_timer <= 0.0 {
-            controller.upper_action = UpperBodyAction::Idle;
-        }
-        
-        // --- Lower Body Movement State ---
+        // Get velocity for movement detection
         let Ok(velocity) = velocity_query.get(player_model.logical_entity) else {
+            controller.state = AnimationState::Idle;
             continue;
         };
         
-        let horizontal_velocity = Vec2::new(velocity.linvel.x, velocity.linvel.z);
-        let speed = horizontal_velocity.length();
+        let horizontal_vel = Vec2::new(velocity.linvel.x, velocity.linvel.z);
+        let speed = horizontal_vel.length();
         
-        controller.movement = if controller.is_crouching {
-            if speed < IDLE_THRESHOLD {
-                MovementState::CrouchIdle
-            } else {
-                MovementState::CrouchWalking
-            }
-        } else if speed < IDLE_THRESHOLD {
-            MovementState::Idle
-        } else if speed < WALK_THRESHOLD {
-            MovementState::Walking
+        // Determine movement state based on velocity and input
+        if speed < IDLE_THRESHOLD {
+            controller.state = AnimationState::Idle;
         } else {
-            MovementState::Running
-        };
+            // Check movement direction based on input
+            let moving_forward = keyboard.pressed(KeyCode::KeyW);
+            let moving_backward = keyboard.pressed(KeyCode::KeyS);
+            let moving_left = keyboard.pressed(KeyCode::KeyA);
+            let moving_right = keyboard.pressed(KeyCode::KeyD);
+            let is_running = speed >= WALK_THRESHOLD;
+            
+            if moving_left && !moving_right {
+                controller.state = AnimationState::StrafeLeft;
+            } else if moving_right && !moving_left {
+                controller.state = AnimationState::StrafeRight;
+            } else if moving_backward && !moving_forward {
+                controller.state = if is_running {
+                    AnimationState::RunningBackward
+                } else {
+                    AnimationState::WalkingBackward
+                };
+            } else {
+                controller.state = if is_running {
+                    AnimationState::Running
+                } else {
+                    AnimationState::Walking
+                };
+            }
+        }
     }
 }
 
 /// Update animation players based on state changes.
-/// 
-/// Note: In a full implementation, this would use bone masks to blend
-/// upper and lower body separately. For now, we prioritize upper body
-/// actions (reload/fire) over locomotion when they're active.
 pub fn update_player_animations(
     shared_animations: Option<Res<SharedAnimations>>,
     controller_query: Query<&PlayerAnimationController, Changed<PlayerAnimationController>>,
@@ -435,35 +314,18 @@ pub fn update_player_animations(
             continue;
         };
 
-        // Determine which animation to play
-        // Priority: Firing > Reloading > Movement
-        let (target_node, should_loop) = match controller.upper_action {
-            UpperBodyAction::Firing => {
-                (controller.upper_body_node(&animations), false)
-            }
-            UpperBodyAction::Reloading => {
-                (controller.upper_body_node(&animations), false)
-            }
-            UpperBodyAction::Idle => {
-                // When idle, blend based on movement
-                // For now, just play movement animation
-                // TODO: Implement proper bone masking for simultaneous upper/lower
-                if controller.movement_changed() || controller.upper_body_changed() {
-                    (controller.movement.node_index(&animations), true)
-                } else {
-                    continue;
-                }
-            }
-        };
-
-        // Apply the animation
+        // Get the target animation node
+        let target_node = animations.get_node(controller.state);
+        
+        // Play the animation with smooth transition
         let transition = transitions.play(
             &mut player,
             target_node,
             Duration::from_secs_f32(BLEND_DURATION),
         );
         
-        if should_loop {
+        // Loop if appropriate
+        if controller.state.should_loop() {
             transition.repeat();
         }
     }
@@ -512,12 +374,46 @@ pub fn setup_animation_player(
         // Initialize with idle animation
         let mut transitions = AnimationTransitions::new();
         transitions
-            .play(&mut player, animations.lower_body.idle, Duration::from_secs_f32(BLEND_DURATION))
+            .play(&mut player, animations.nodes.idle, Duration::from_secs_f32(BLEND_DURATION))
             .repeat();
 
         commands.entity(anim_entity).insert((
             AnimationGraphHandle(animations.graph.clone()),
             transitions,
         ));
+    }
+}
+
+// ============================================================================
+// LEGACY COMPATIBILITY (for other modules that may reference old types)
+// ============================================================================
+
+/// Weapon types (kept for compatibility with other systems)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum WeaponType {
+    #[default]
+    Rifle,
+    Pistol,
+    Sniper,
+    Knife,
+}
+
+impl WeaponType {
+    pub fn reload_duration(&self) -> f32 {
+        match self {
+            WeaponType::Rifle => 2.5,
+            WeaponType::Pistol => 1.8,
+            WeaponType::Sniper => 3.5,
+            WeaponType::Knife => 0.0,
+        }
+    }
+
+    pub fn fire_cooldown(&self) -> f32 {
+        match self {
+            WeaponType::Rifle => 0.1,
+            WeaponType::Pistol => 0.15,
+            WeaponType::Sniper => 1.5,
+            WeaponType::Knife => 0.5,
+        }
     }
 }
