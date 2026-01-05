@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::game::config::MapId;
 use crate::game::player::skins::{SkinId, SkinRegistry};
 
+pub mod debug_widgets;
 pub mod home_scene;
 pub mod home_tab;
 pub mod inventory_tab;
