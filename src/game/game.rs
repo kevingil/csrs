@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy_rapier3d::plugin::{NoUserData, RapierPhysicsPlugin};
+use bevy_rapier3d::render::RapierDebugRenderPlugin;
 use bevy_fps_controller::controller::FpsControllerPlugin;
 
 use super::{config::GameConfig, level::level, player::player, ui::ui, window::window};
@@ -20,12 +21,13 @@ impl Plugin for GamePlugin {
         app.init_state::<GameState>()
             .init_resource::<GameConfig>()
             .add_plugins((
-            RapierPhysicsPlugin::<NoUserData>::default(),
+                RapierPhysicsPlugin::<NoUserData>::default(),
+                RapierDebugRenderPlugin::default().disabled(),
                 FpsControllerPlugin,
-            level::LevelPlugin,
-            player::PlayerPlugin,
-            window::WindowSettingsPlugin,
-            ui::UiPlugin,
-        ));
+                level::LevelPlugin,
+                player::PlayerPlugin,
+                window::WindowSettingsPlugin,
+                ui::UiPlugin,
+            ));
     }
 }

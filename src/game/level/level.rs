@@ -28,7 +28,7 @@ fn init_level(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Load the map model
     commands.spawn((
         LevelEntity,
-        SceneRoot(asset_server.load("models/offlow_field_map.glb#Scene0")),
+        SceneRoot(asset_server.load("models/map/warehouse_map.glb#Scene0")),
         Transform::default(),
     ));
 
