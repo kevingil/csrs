@@ -1,5 +1,4 @@
 use std::time::Duration;
-use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 
 /// Main game configuration resource
@@ -40,14 +39,21 @@ impl GameMode {
 #[derive(Default, Clone, PartialEq, Debug)]
 pub enum MapId {
     #[default]
-    Default,
+    Warehouse,
     // Future: Additional maps
 }
 
 impl MapId {
     pub fn name(&self) -> &'static str {
         match self {
-            MapId::Default => "Default",
+            MapId::Warehouse => "Warehouse",
+        }
+    }
+    
+    /// Get the config file path for this map
+    pub fn config_path(&self) -> &'static str {
+        match self {
+            MapId::Warehouse => "maps/warehouse/config.map.ron",
         }
     }
 }
@@ -69,51 +75,3 @@ impl Default for MatchSettings {
         }
     }
 }
-
-/// Post-processing settings for visual effects
-#[derive(Clone, Debug)]
-pub struct PostProcessSettings {
-    pub bloom_intensity: f32,
-    pub bloom_threshold: f32,
-    pub tonemapping: Tonemapping,
-    pub contrast: f32,
-    pub saturation: f32,
-}
-
-impl Default for PostProcessSettings {
-    fn default() -> Self {
-        Self {
-            bloom_intensity: 0.05, // Subtle bloom - was 0.3
-            bloom_threshold: 1.5,  // Higher threshold = only bright areas bloom
-            tonemapping: Tonemapping::TonyMcMapface,
-            contrast: 1.0,
-            saturation: 1.0,
-        }
-    }
-}
-
-/// Configuration for a specific map including transforms and effects
-#[derive(Resource, Clone, Debug)]
-pub struct MapConfig {
-    /// Player spawn position in world coordinates
-    pub player_spawn: Vec3,
-    /// Map model transform (position, scale, rotation)
-    pub map_position: Vec3,
-    pub map_scale: f32,
-    pub map_rotation: Quat,
-    /// Post-processing effects for this map
-    pub post_process: PostProcessSettings,
-}
-
-impl Default for MapConfig {
-    fn default() -> Self {
-        Self {
-            player_spawn: Vec3::new(0.0, 2.0, 0.0),
-            map_position: Vec3::ZERO,
-            map_scale: 1.0,
-            map_rotation: Quat::IDENTITY,
-            post_process: PostProcessSettings::default(),
-        }
-    }
-}
-

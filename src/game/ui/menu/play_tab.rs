@@ -43,7 +43,7 @@ const MAP_CARD_HOVER: Color = Color::srgba(0.2, 0.2, 0.3, 1.0);
 fn get_maps_for_mode(mode: &GameMode) -> Vec<(MapId, &'static str, Color)> {
     match mode {
         GameMode::Freemode => vec![
-            (MapId::Default, "Default Arena", Color::srgb(0.3, 0.5, 0.7)),
+            (MapId::Warehouse, "Warehouse", Color::srgb(0.3, 0.5, 0.7)),
         ],
     }
 }

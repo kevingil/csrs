@@ -18,7 +18,7 @@ use super::animation::{
 use super::player_shooting::TracerSpawnSpot;
 use super::player_model::{PlayerModel, HitboxZoneMarker, COLLIDER_HEIGHT};
 use super::skins::{SkinRegistry, HitboxZoneType, STANDARD_HITBOX};
-use crate::game::config::MapConfig;
+use crate::game::level::level::LoadedGameplayMapConfig;
 use crate::game::math::coordinates::blender_to_world;
 use crate::game::ui::menu::PlayerLoadout;
 use crate::game::GameState;
@@ -52,17 +52,22 @@ fn init_player(
     asset_server: Res<AssetServer>,
     loadout: Res<PlayerLoadout>,
     skin_registry: Res<SkinRegistry>,
-    map_config: Res<MapConfig>,
+    gameplay_config: Res<LoadedGameplayMapConfig>,
 ) {
     let fov = 103.0_f32.to_radians();
+    let config = gameplay_config.config.as_ref();
 
     // Get selected skin definition
     let skin_def = skin_registry
         .get(loadout.selected_skin)
         .expect("Selected skin should exist in registry");
 
-    // Use player spawn from MapConfig, with a small Y offset for physics
-    let spawn_point = map_config.player_spawn + Vec3::new(0.0, 1.625, 0.0);
+    // Use player spawn from config, with a small Y offset for physics
+    let base_spawn = config
+        .and_then(|c| c.spawn_points.first())
+        .map(|s| s.position.to_vec3())
+        .unwrap_or(Vec3::new(0.0, 2.0, 0.0));
+    let spawn_point = base_spawn + Vec3::new(0.0, 1.625, 0.0);
 
     // Entity 1: LogicalPlayer (Physics body - invisible)
     let logical_entity = commands
@@ -119,6 +124,13 @@ fn init_player(
         ))
         .id();
 
+    // Post-processing settings from config
+    let bloom_intensity = config.map(|c| c.post_process.bloom_intensity).unwrap_or(0.05);
+    let tonemapping = config
+        .map(|c| c.post_process.tonemapping.to_bevy())
+        .unwrap_or(bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface);
+    let exposure_ev100 = config.map(|c| c.camera.exposure_ev100).unwrap_or(15.0);
+
     // Entity 2: RenderPlayer (Camera - first person view with post-processing)
     commands
         .spawn((
@@ -133,17 +145,16 @@ fn init_player(
                 fov,
                 ..default()
             }),
-            Exposure::SUNLIGHT,
+            Exposure { ev100: exposure_ev100 },
             RenderPlayer { logical_entity },
-            // Post-processing effects from MapConfig
             Bloom {
-                intensity: map_config.post_process.bloom_intensity,
-                low_frequency_boost: 0.2,  // Reduced from 0.5
+                intensity: bloom_intensity,
+                low_frequency_boost: 0.2,
                 low_frequency_boost_curvature: 0.7,
                 high_pass_frequency: 1.0,
                 ..default()
             },
-            map_config.post_process.tonemapping,
+            tonemapping,
         ))
         .add_children(&[tracer_spawn_entity, gun_entity]);
 
@@ -213,9 +224,14 @@ fn cleanup_player(mut commands: Commands, query: Query<Entity, With<PlayerEntity
 
 fn respawn(
     mut query: Query<(&mut Transform, &mut Velocity), With<LogicalPlayer>>,
-    map_config: Res<MapConfig>,
+    gameplay_config: Res<LoadedGameplayMapConfig>,
 ) {
-    let spawn_point = map_config.player_spawn + Vec3::new(0.0, 1.625, 0.0);
+    let config = gameplay_config.config.as_ref();
+    let base_spawn = config
+        .and_then(|c| c.spawn_points.first())
+        .map(|s| s.position.to_vec3())
+        .unwrap_or(Vec3::new(0.0, 2.0, 0.0));
+    let spawn_point = base_spawn + Vec3::new(0.0, 1.625, 0.0);
     
     for (mut transform, mut velocity) in &mut query {
         if transform.translation.y > -50.0 {

@@ -1,5 +1,6 @@
 use bevy::{
     core_pipeline::bloom::Bloom,
+    pbr::{DistanceFog, FogFalloff},
     prelude::*,
     render::camera::Exposure,
 };
@@ -7,7 +8,7 @@ use bevy_rapier3d::render::DebugRenderContext;
 use std::{fs::OpenOptions, time::Duration};
 use std::io::Write;
 
-use crate::game::config::MapConfig;
+use crate::game::map::{MapConfig, spawn_lighting};
 use crate::game::player::animation::SharedAnimations;
 use crate::game::player::player_model::PlayerModel;
 use crate::game::player::skins::{SkinId, SkinRegistry};
@@ -16,13 +17,24 @@ use crate::game::GameState;
 
 pub struct HomeScenePlugin;
 
+/// Resource to track the home map config loading
+#[derive(Resource)]
+pub struct HomeMapConfigHandle(Handle<MapConfig>);
+
+/// Resource holding the loaded home map config
+#[derive(Resource, Default)]
+pub struct LoadedHomeMapConfig {
+    pub config: Option<MapConfig>,
+}
+
 impl Plugin for HomeScenePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DebugTarget>()
             .init_resource::<DebugPanelState>()
-            .init_resource::<MapConfig>()
+            .init_resource::<LoadedHomeMapConfig>()
             .init_gizmo_group::<SkeletonGizmos>()
-            .add_systems(Startup, (setup_skeleton_gizmos, setup_debug_ui))
+            .add_systems(Startup, (setup_skeleton_gizmos, setup_debug_ui, load_home_map_config))
+            .add_systems(Update, check_home_map_config_loaded)
             .add_systems(OnEnter(GameState::MainMenu), setup_home_scene)
             .add_systems(OnExit(GameState::MainMenu), cleanup_home_scene)
             // Home scene specific systems (only in MainMenu)
@@ -57,7 +69,7 @@ impl Plugin for HomeScenePlugin {
 }
 
 /// Marker for home scene entities (cleaned up when leaving menu)
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub struct HomeSceneEntity;
 
 /// Marker for debug UI entities (persists across states)
@@ -142,6 +154,10 @@ struct DebugPanelState {
     show_skeleton: bool,
     show_hitboxes: bool,
     current_animation_index: usize,
+    // Post-process debug values
+    bloom_intensity: f32,
+    contrast: f32,
+    saturation: f32,
 }
 
 impl Default for DebugPanelState {
@@ -154,6 +170,9 @@ impl Default for DebugPanelState {
             show_skeleton: false,
             show_hitboxes: false,
             current_animation_index: 3, // rifle_home_idle (actual index in GLB)
+            bloom_intensity: 0.05,
+            contrast: 1.0,
+            saturation: 1.0,
         }
     }
 }
@@ -230,30 +249,61 @@ macro_rules! spawn_debug_button {
     };
 }
 
+/// Load the home map config on startup
+fn load_home_map_config(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let handle = asset_server.load("maps/home/config.map.ron");
+    commands.insert_resource(HomeMapConfigHandle(handle));
+}
+
+/// Check if home map config is loaded and store it
+fn check_home_map_config_loaded(
+    mut loaded_config: ResMut<LoadedHomeMapConfig>,
+    handle: Option<Res<HomeMapConfigHandle>>,
+    configs: Res<Assets<MapConfig>>,
+) {
+    if loaded_config.config.is_some() {
+        return;
+    }
+    
+    let Some(handle) = handle else { return };
+    
+    if let Some(config) = configs.get(&handle.0) {
+        loaded_config.config = Some(config.clone());
+    }
+}
+
 fn setup_home_scene(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     loadout: Res<PlayerLoadout>,
     skin_registry: Res<SkinRegistry>,
-    map_config: Res<MapConfig>,
+    home_config: Res<LoadedHomeMapConfig>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    // Get the loaded home map config (fallback to defaults if not loaded yet)
+    let config = home_config.config.as_ref();
+    
     // Get selected skin (falls back to default if not found)
     let skin_def = skin_registry
         .get(loadout.selected_skin)
         .unwrap_or_else(|| skin_registry.get(SkinId::default()).unwrap());
 
-    // Custom FOV for menu scene
-    let menu_fov = 60.0_f32.to_radians();
+    // Camera settings from config or defaults
+    let fov = config.map(|c| c.camera.fov).unwrap_or(60.0).to_radians();
+    let exposure_ev100 = config.map(|c| c.camera.exposure_ev100).unwrap_or(10.0);
+    let bloom_intensity = config.map(|c| c.post_process.bloom_intensity).unwrap_or(0.05);
+    let tonemapping = config
+        .map(|c| c.post_process.tonemapping.to_bevy())
+        .unwrap_or(bevy::core_pipeline::tonemapping::Tonemapping::TonyMcMapface);
 
     // 3D Camera for the home scene with post-processing
-    commands.spawn((
+    let mut camera_cmd = commands.spawn((
         HomeSceneEntity,
         HomeSceneCamera,
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
-            fov: menu_fov,
+            fov,
             near: 0.1,
             far: 1000.0,
             ..default()
@@ -263,38 +313,51 @@ fn setup_home_scene(
             hdr: true, // Required for bloom
             ..default()
         },
-        Transform::from_xyz(-0.0329, 2.7334, 5.4840).with_rotation(Quat::from_axis_angle(Vec3::new(-1.0, 0.0, 0.0), 0.1244)),
-        Exposure::INDOOR,
-        // Post-processing effects
+        Transform::from_xyz(-0.0329, 2.7334, 5.4840)
+            .with_rotation(Quat::from_axis_angle(Vec3::new(-1.0, 0.0, 0.0), 0.1244)),
+        Exposure { ev100: exposure_ev100 },
         Bloom {
-            intensity: map_config.post_process.bloom_intensity,
-            low_frequency_boost: 0.2,  // Reduced from 0.5
+            intensity: bloom_intensity,
+            low_frequency_boost: 0.2,
             low_frequency_boost_curvature: 0.7,
             high_pass_frequency: 1.0,
             ..default()
         },
-        map_config.post_process.tonemapping,
+        tonemapping,
     ));
 
-    // Armory background scene
+    // Add fog if configured
+    if let Some(fog_config) = config.and_then(|c| c.fog.as_ref()) {
+        camera_cmd.insert(DistanceFog {
+            color: fog_config.color.to_color(),
+            falloff: FogFalloff::Exponential { density: fog_config.density },
+            ..default()
+        });
+    }
+
+    // Armory background scene - use config transform if available
+    let armory_transform = config
+        .map(|c| c.transform.to_transform())
+        .unwrap_or_else(|| {
+            Transform::from_xyz(5.2099, 0.0, 2.4632)
+                .with_scale(Vec3::splat(1.753397))
+                .with_rotation(Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), 0.6154))
+        });
+    
     commands.spawn((
         HomeSceneEntity,
         ArmoryScene,
-        SceneRoot(asset_server.load("models/map/armory_map.glb#Scene0")),
-        Transform::from_xyz(5.2099, 0.0, 2.4632)
-            .with_scale(Vec3::splat(1.753397))
-            .with_rotation(Quat::from_axis_angle(Vec3::new(0.0, 1.0, 0.0), 0.6154)),
+        SceneRoot(asset_server.load("maps/home/armory_map.glb#Scene0")),
+        armory_transform,
     ));
 
-    // Warehouse map (gameplay map preview, initially positioned off to the side)
+    // Warehouse map (gameplay map preview, initially hidden)
     commands.spawn((
         HomeSceneEntity,
         WarehouseScene,
-        SceneRoot(asset_server.load("models/map/warehouse_map.glb#Scene0")),
-        Transform::from_translation(map_config.map_position)
-            .with_scale(Vec3::splat(map_config.map_scale))
-            .with_rotation(map_config.map_rotation),
-        Visibility::Hidden, // Hidden by default, toggle with debug panel
+        SceneRoot(asset_server.load("maps/warehouse/warehouse_map.glb#Scene0")),
+        Transform::default(),
+        Visibility::Hidden,
     ));
 
     // Platform for player to stand on
@@ -323,30 +386,44 @@ fn setup_home_scene(
         Visibility::Visible,
     ));
 
-    // Dark room with single lightbulb effect
-    // Very dim ambient for darkness
-    commands.spawn((
-        HomeSceneEntity,
-        AmbientLight {
-            color: Color::srgb(0.05, 0.05, 0.08),
-            brightness: 20.0,
-            affects_lightmapped_meshes: true,
-        },
-    ));
-
-    // Single point light (lightbulb) - warm color, positioned above character
-    commands.spawn((
-        HomeSceneEntity,
-        PointLight {
-            color: Color::srgb(1.0, 0.9, 0.7), // Warm incandescent color
-            intensity: 800_000.0,
-            radius: 0.1,
-            range: 15.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(0.0, 3.5, 1.0),
-    ));
+    // Spawn lighting from config
+    if let Some(config) = config {
+        spawn_lighting(&mut commands, &config.lighting, HomeSceneEntity);
+    } else {
+        // Fallback lighting if config not loaded
+        commands.spawn((
+            HomeSceneEntity,
+            AmbientLight {
+                color: Color::srgb(0.01, 0.01, 0.02),
+                brightness: 1.0,
+                affects_lightmapped_meshes: true,
+            },
+        ));
+        
+        commands.spawn((
+            HomeSceneEntity,
+            PointLight {
+                color: Color::srgb(1.0, 0.9, 0.7),
+                intensity: 120_000.0,
+                range: 8.0,
+                shadows_enabled: true,
+                ..default()
+            },
+            Transform::from_xyz(1.5, 4.0, 1.5),
+        ));
+        
+        commands.spawn((
+            HomeSceneEntity,
+            PointLight {
+                color: Color::srgb(1.0, 0.85, 0.6),
+                intensity: 100_000.0,
+                range: 8.0,
+                shadows_enabled: true,
+                ..default()
+            },
+            Transform::from_xyz(-1.5, 4.0, 0.5),
+        ));
+    }
 }
 
 /// Marker for entities that have had AnimationPlayer added by us
@@ -1602,7 +1679,7 @@ fn handle_postprocess_sliders(
         (With<SaturationSlider>, Without<BloomIntensitySlider>, Without<ContrastSlider>),
     >,
     windows: Query<&Window>,
-    mut map_config: ResMut<MapConfig>,
+    mut debug_state: ResMut<DebugPanelState>,
     mut bloom_query: Query<&mut Bloom, With<HomeSceneCamera>>,
 ) {
     let Ok(window) = windows.single() else {
@@ -1617,7 +1694,7 @@ fn handle_postprocess_sliders(
     for (interaction, node, transform) in &bloom_slider {
         if *interaction == Interaction::Pressed {
             if let Some(new_value) = calculate_postprocess_slider_value(cursor_pos, node, transform, 0.0, 1.0) {
-                map_config.post_process.bloom_intensity = new_value;
+                debug_state.bloom_intensity = new_value;
                 // Update the actual bloom component
                 if let Ok(mut bloom) = bloom_query.single_mut() {
                     bloom.intensity = new_value;
@@ -1630,7 +1707,7 @@ fn handle_postprocess_sliders(
     for (interaction, node, transform) in &contrast_slider {
         if *interaction == Interaction::Pressed {
             if let Some(new_value) = calculate_postprocess_slider_value(cursor_pos, node, transform, 0.0, 2.0) {
-                map_config.post_process.contrast = new_value;
+                debug_state.contrast = new_value;
             }
         }
     }
@@ -1639,7 +1716,7 @@ fn handle_postprocess_sliders(
     for (interaction, node, transform) in &saturation_slider {
         if *interaction == Interaction::Pressed {
             if let Some(new_value) = calculate_postprocess_slider_value(cursor_pos, node, transform, 0.0, 2.0) {
-                map_config.post_process.saturation = new_value;
+                debug_state.saturation = new_value;
             }
         }
     }
@@ -1666,7 +1743,7 @@ fn calculate_postprocess_slider_value(
 
 /// Update post-processing value displays and slider fills
 fn update_postprocess_displays(
-    map_config: Res<MapConfig>,
+    debug_state: Res<DebugPanelState>,
     mut bloom_value: Query<&mut Text, (With<BloomIntensityValue>, Without<ContrastValue>, Without<SaturationValue>)>,
     mut contrast_value: Query<&mut Text, (With<ContrastValue>, Without<BloomIntensityValue>, Without<SaturationValue>)>,
     mut saturation_value: Query<&mut Text, (With<SaturationValue>, Without<BloomIntensityValue>, Without<ContrastValue>)>,
@@ -1675,42 +1752,42 @@ fn update_postprocess_displays(
     saturation_slider: Query<&Children, (With<SaturationSlider>, Without<BloomIntensitySlider>, Without<ContrastSlider>)>,
     mut fill_query: Query<&mut Node, Without<BloomIntensitySlider>>,
 ) {
-    if !map_config.is_changed() {
+    if !debug_state.is_changed() {
         return;
     }
 
     // Update bloom display
     if let Ok(mut text) = bloom_value.single_mut() {
-        **text = format!("{:.2}", map_config.post_process.bloom_intensity);
+        **text = format!("{:.2}", debug_state.bloom_intensity);
     }
     if let Ok(children) = bloom_slider.single() {
         for child in children.iter() {
             if let Ok(mut node) = fill_query.get_mut(child) {
-                node.width = Val::Percent(map_config.post_process.bloom_intensity * 100.0);
+                node.width = Val::Percent(debug_state.bloom_intensity * 100.0);
             }
         }
     }
 
     // Update contrast display
     if let Ok(mut text) = contrast_value.single_mut() {
-        **text = format!("{:.2}", map_config.post_process.contrast);
+        **text = format!("{:.2}", debug_state.contrast);
     }
     if let Ok(children) = contrast_slider.single() {
         for child in children.iter() {
             if let Ok(mut node) = fill_query.get_mut(child) {
-                node.width = Val::Percent((map_config.post_process.contrast / 2.0) * 100.0);
+                node.width = Val::Percent((debug_state.contrast / 2.0) * 100.0);
             }
         }
     }
 
     // Update saturation display
     if let Ok(mut text) = saturation_value.single_mut() {
-        **text = format!("{:.2}", map_config.post_process.saturation);
+        **text = format!("{:.2}", debug_state.saturation);
     }
     if let Ok(children) = saturation_slider.single() {
         for child in children.iter() {
             if let Ok(mut node) = fill_query.get_mut(child) {
-                node.width = Val::Percent((map_config.post_process.saturation / 2.0) * 100.0);
+                node.width = Val::Percent((debug_state.saturation / 2.0) * 100.0);
             }
         }
     }

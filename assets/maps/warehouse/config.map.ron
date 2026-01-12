@@ -1,0 +1,35 @@
+(
+    name: "Warehouse",
+    model: "warehouse_map.glb",
+    transform: (
+        position: (x: 0.0, y: 0.0, z: 0.0),
+        scale: 1.0,
+        rotation: (0.0, 1.0, 0.0, 0.0),
+    ),
+    lighting: (
+        ambient_color: (r: 1.0, g: 1.0, b: 1.0),
+        ambient_brightness: 500.0,
+        point_lights: [],
+        directional_lights: [
+            (
+                direction: (x: 1.0, y: 2.0, z: 1.0),
+                color: (r: 1.0, g: 1.0, b: 1.0),
+                illuminance: 100000.0,
+                shadows: true,
+            ),
+        ],
+    ),
+    camera: (
+        exposure_ev100: 15.0,
+        fov: 90.0,
+    ),
+    fog: None,
+    post_process: (
+        bloom_intensity: 0.05,
+        tonemapping: TonyMcMapface,
+    ),
+    spawn_points: [
+        (position: (x: 0.0, y: 2.0, z: 0.0), rotation: 0.0),
+    ],
+    clear_color: Some((r: 0.53, g: 0.81, b: 0.92)),
+)
