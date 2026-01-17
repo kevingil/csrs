@@ -66,6 +66,10 @@ fn start_loading_map_config(
         .map(|(base, _)| base.to_string())
         .unwrap_or_else(|| "maps/warehouse".to_string());
 
+    println!("[DEBUG] Loading map config: {}", config_path);
+    println!("[DEBUG] Base path: {}", base_path);
+    println!("[DEBUG] Selected map: {:?}", game_config.map);
+
     let handle = asset_server.load(config_path);
     commands.insert_resource(GameplayMapConfigHandle { handle, base_path });
 }
@@ -118,17 +122,23 @@ fn init_level_when_ready(
 
     let map_transform = config.transform.to_transform();
 
+    // Spawn map with AsyncSceneCollider to auto-generate colliders from mesh geometry
     commands.spawn((
         LevelEntity,
         SceneRoot(asset_server.load(&model_path)),
         map_transform,
+        // Automatically generate TriMesh colliders for all meshes in the scene
+        AsyncSceneCollider {
+            shape: Some(ComputedColliderShape::TriMesh(TriMeshFlags::MERGE_DUPLICATE_VERTICES)),
+            named_shapes: Default::default(),
+        },
     ));
 
-    // Invisible floor collider for physics (large flat plane)
+    // Fallback floor far below the map - catches player if they fall through geometry
     commands.spawn((
         LevelEntity,
-        Collider::cuboid(500., 0.1, 500.),
-        Transform::from_xyz(0., -0.1, 0.),
+        Collider::cuboid(1000., 0.1, 1000.),
+        Transform::from_xyz(0., -100., 0.),
     ));
 
     // Spawn lighting from config
