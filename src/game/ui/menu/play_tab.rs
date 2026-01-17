@@ -44,6 +44,7 @@ fn get_maps_for_mode(mode: &GameMode) -> Vec<(MapId, &'static str, Color)> {
     match mode {
         GameMode::Freemode => vec![
             (MapId::Warehouse, "Warehouse", Color::srgb(0.3, 0.5, 0.7)),
+            (MapId::Dust2, "Dust 2", Color::srgb(0.8, 0.7, 0.5)),
         ],
     }
 }

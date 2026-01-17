@@ -1,3 +1,4 @@
+use crate::game::config::GameConfig;
 use crate::game::map::{MapConfig, spawn_lighting};
 use crate::game::GameState;
 
@@ -11,13 +12,21 @@ pub struct LevelEntity;
 
 /// Resource to track the gameplay map config loading
 #[derive(Resource)]
-pub struct GameplayMapConfigHandle(Handle<MapConfig>);
+pub struct GameplayMapConfigHandle {
+    handle: Handle<MapConfig>,
+    base_path: String,
+}
 
 /// Resource holding the loaded gameplay map config
 #[derive(Resource, Default)]
 pub struct LoadedGameplayMapConfig {
     pub config: Option<MapConfig>,
+    pub base_path: String,
 }
+
+/// Track if level has been initialized this session
+#[derive(Resource, Default)]
+pub struct LevelInitialized(bool);
 
 pub struct LevelPlugin;
 
@@ -25,17 +34,40 @@ impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(targets::TargetsPlugin)
             .init_resource::<LoadedGameplayMapConfig>()
-            .add_systems(Startup, load_gameplay_map_config)
-            .add_systems(Update, check_gameplay_map_config_loaded)
-            .add_systems(OnEnter(GameState::Playing), init_level)
+            .init_resource::<LevelInitialized>()
+            .add_systems(OnEnter(GameState::Playing), start_loading_map_config)
+            .add_systems(
+                Update,
+                (check_gameplay_map_config_loaded, init_level_when_ready)
+                    .chain()
+                    .run_if(in_state(GameState::Playing)),
+            )
             .add_systems(OnExit(GameState::Playing), cleanup_level);
     }
 }
 
-/// Load the gameplay map config on startup
-fn load_gameplay_map_config(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let handle = asset_server.load("maps/warehouse/config.map.ron");
-    commands.insert_resource(GameplayMapConfigHandle(handle));
+/// Start loading the map config when entering Playing state
+fn start_loading_map_config(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    game_config: Res<GameConfig>,
+    mut loaded_config: ResMut<LoadedGameplayMapConfig>,
+    mut level_initialized: ResMut<LevelInitialized>,
+) {
+    // Reset state for new level
+    loaded_config.config = None;
+    loaded_config.base_path = String::new();
+    level_initialized.0 = false;
+
+    let config_path = game_config.map.config_path();
+    // Derive base path by removing the filename (e.g., "maps/de_dust_2" from "maps/de_dust_2/config.map.ron")
+    let base_path = config_path
+        .rsplit_once('/')
+        .map(|(base, _)| base.to_string())
+        .unwrap_or_else(|| "maps/warehouse".to_string());
+
+    let handle = asset_server.load(config_path);
+    commands.insert_resource(GameplayMapConfigHandle { handle, base_path });
 }
 
 /// Check if gameplay map config is loaded and store it
@@ -47,39 +79,45 @@ fn check_gameplay_map_config_loaded(
     if loaded_config.config.is_some() {
         return;
     }
-    
-    let Some(handle) = handle else { return };
-    
-    if let Some(config) = configs.get(&handle.0) {
+
+    let Some(handle_res) = handle else { return };
+
+    if let Some(config) = configs.get(&handle_res.handle) {
         loaded_config.config = Some(config.clone());
+        loaded_config.base_path = handle_res.base_path.clone();
     }
 }
 
-fn init_level(
+/// Initialize the level once the map config is loaded
+fn init_level_when_ready(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     gameplay_config: Res<LoadedGameplayMapConfig>,
+    mut level_initialized: ResMut<LevelInitialized>,
 ) {
-    // Get config or use defaults
-    let config = gameplay_config.config.as_ref();
-    
+    // Only init once config is loaded and level hasn't been initialized yet
+    if level_initialized.0 || gameplay_config.config.is_none() {
+        return;
+    }
+
+    level_initialized.0 = true;
+
+    let config = gameplay_config.config.as_ref().unwrap();
+    let base_path = &gameplay_config.base_path;
+
     // Set clear color from config
-    if let Some(clear_color) = config.and_then(|c| c.clear_color.as_ref()) {
+    if let Some(clear_color) = config.clear_color.as_ref() {
         commands.insert_resource(ClearColor(clear_color.to_color()));
     } else {
         // Default sky color
         commands.insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.92)));
     }
-    
-    // Load the map model
-    let model_path = config
-        .map(|c| format!("maps/warehouse/{}#Scene0", c.model))
-        .unwrap_or_else(|| "maps/warehouse/warehouse_map.glb#Scene0".to_string());
-    
-    let map_transform = config
-        .map(|c| c.transform.to_transform())
-        .unwrap_or_default();
-    
+
+    // Load the map model using the dynamic base path
+    let model_path = format!("{}/{}#Scene0", base_path, config.model);
+
+    let map_transform = config.transform.to_transform();
+
     commands.spawn((
         LevelEntity,
         SceneRoot(asset_server.load(&model_path)),
@@ -94,29 +132,7 @@ fn init_level(
     ));
 
     // Spawn lighting from config
-    if let Some(config) = config {
-        spawn_lighting(&mut commands, &config.lighting, LevelEntity);
-    } else {
-        // Fallback lighting
-        commands.spawn((
-            LevelEntity,
-            AmbientLight {
-                color: Color::WHITE,
-                brightness: 500.0,
-                affects_lightmapped_meshes: true,
-            },
-        ));
-        
-        commands.spawn((
-            LevelEntity,
-            DirectionalLight {
-                illuminance: light_consts::lux::FULL_DAYLIGHT,
-                shadows_enabled: true,
-                ..default()
-            },
-            Transform::from_xyz(100., 200., 100.).looking_at(Vec3::ZERO, Vec3::Y),
-        ));
-    }
+    spawn_lighting(&mut commands, &config.lighting, LevelEntity);
 }
 
 fn cleanup_level(mut commands: Commands, query: Query<Entity, With<LevelEntity>>) {

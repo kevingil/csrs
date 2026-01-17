@@ -40,20 +40,22 @@ impl GameMode {
 pub enum MapId {
     #[default]
     Warehouse,
-    // Future: Additional maps
+    Dust2,
 }
 
 impl MapId {
     pub fn name(&self) -> &'static str {
         match self {
             MapId::Warehouse => "Warehouse",
+            MapId::Dust2 => "Dust 2",
         }
     }
-    
+
     /// Get the config file path for this map
     pub fn config_path(&self) -> &'static str {
         match self {
             MapId::Warehouse => "maps/warehouse/config.map.ron",
+            MapId::Dust2 => "maps/de_dust_2/config.map.ron",
         }
     }
 }
