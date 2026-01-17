@@ -1,0 +1,38 @@
+(
+    name: "Dust 2",
+    model: "de_dust_2.glb",
+    transform: (
+        position: (x: 0.0, y: 0.0, z: 0.0),
+        scale: 1.0,
+        rotation: (0.0, 1.0, 0.0, 0.0),
+    ),
+    lighting: (
+        ambient_color: (r: 0.9, g: 0.85, b: 0.7),
+        ambient_brightness: 300.0,
+        point_lights: [],
+        directional_lights: [
+            (
+                direction: (x: 0.5, y: 1.0, z: 0.3),
+                color: (r: 1.0, g: 0.95, b: 0.8),
+                illuminance: 80000.0,
+                shadows: true,
+            ),
+        ],
+    ),
+    camera: (
+        exposure_ev100: 14.0,
+        fov: 90.0,
+    ),
+    fog: Some((
+        color: (r: 0.85, g: 0.8, b: 0.65, a: 1.0),
+        density: 0.02,
+    )),
+    post_process: (
+        bloom_intensity: 0.08,
+        tonemapping: TonyMcMapface,
+    ),
+    spawn_points: [
+        (position: (x: 0.0, y: 2.0, z: 0.0), rotation: 0.0),
+    ],
+    clear_color: Some((r: 0.53, g: 0.81, b: 0.92)),
+)
