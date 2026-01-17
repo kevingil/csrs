@@ -109,6 +109,10 @@ fn init_level_when_ready(
     let config = gameplay_config.config.as_ref().unwrap();
     let base_path = &gameplay_config.base_path;
 
+    println!("[DEBUG] Level init - Map name: {}", config.name);
+    println!("[DEBUG] Level init - Model: {}", config.model);
+    println!("[DEBUG] Level init - Spawn points: {:?}", config.spawn_points);
+
     // Set clear color from config
     if let Some(clear_color) = config.clear_color.as_ref() {
         commands.insert_resource(ClearColor(clear_color.to_color()));

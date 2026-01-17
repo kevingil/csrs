@@ -66,8 +66,16 @@ fn init_player(
     let base_spawn = config
         .and_then(|c| c.spawn_points.first())
         .map(|s| s.position.to_vec3())
-        .unwrap_or(Vec3::new(0.0, 2.0, 0.0));
-    let spawn_point = base_spawn + Vec3::new(0.0, 1.625, 0.0);
+        .unwrap_or(Vec3::new(0.0, 10.0, 0.0));
+    let spawn_point = base_spawn + Vec3::new(0.0, 1.625, 10.0);
+
+    println!("[DEBUG] Player spawn - config present: {}", config.is_some());
+    if let Some(c) = config {
+        println!("[DEBUG] Player spawn - map name: {}", c.name);
+        println!("[DEBUG] Player spawn - spawn_points: {:?}", c.spawn_points);
+    }
+    println!("[DEBUG] Player spawn - base_spawn: {:?}", base_spawn);
+    println!("[DEBUG] Player spawn - final spawn_point: {:?}", spawn_point);
 
     // Entity 1: LogicalPlayer (Physics body - invisible)
     let logical_entity = commands
