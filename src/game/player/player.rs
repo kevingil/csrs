@@ -121,6 +121,21 @@ fn init_player(
     let gun_model = asset_server.load("models/weapons/ak_47.glb#Scene0");
     let gun_entity = commands.spawn((PlayerEntity, SceneRoot(gun_model))).id();
 
+    // Viewmodel light - illuminates the weapon so it's always visible
+    let viewmodel_light_entity = commands
+        .spawn((
+            PlayerEntity,
+            PointLight {
+                color: Color::WHITE,
+                intensity: 50000.0,  // Adjust for brightness
+                range: 3.0,
+                shadows_enabled: false,  // No shadows from viewmodel light
+                ..default()
+            },
+            Transform::from_xyz(0.0, 0.0, -0.5),  // Slightly in front of camera
+        ))
+        .id();
+
     // Tracer spawn spot - child of camera
     let spawn_spot = blender_to_world(Vec3::new(0.530462, 2.10557, -0.466568));
     let tracer_spawn_entity = commands
@@ -164,7 +179,7 @@ fn init_player(
             },
             tonemapping,
         ))
-        .add_children(&[tracer_spawn_entity, gun_entity]);
+        .add_children(&[tracer_spawn_entity, gun_entity, viewmodel_light_entity]);
 
     // Entity 3: PlayerModel (Visible character mesh)
     // Load the selected skin model
