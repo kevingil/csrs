@@ -169,7 +169,7 @@ impl Default for DebugPanelState {
             drag_offset: Vec2::ZERO,
             show_skeleton: false,
             show_hitboxes: false,
-            current_animation_index: 0, // Start with first animation
+            current_animation_index: 16, // Home idle animation
             bloom_intensity: 0.05,
             contrast: 1.0,
             saturation: 1.0,
@@ -515,9 +515,9 @@ fn setup_home_player_animation(
             continue;
         }
         
-        // Setup animation graph and play first animation (idle)
+        // Setup animation graph and play home idle animation (index 16)
         let mut transitions = AnimationTransitions::new();
-        let idle_node = animations.get_by_index(0);
+        let idle_node = animations.get_by_index(16);
         transitions
             .play(
                 &mut player,
