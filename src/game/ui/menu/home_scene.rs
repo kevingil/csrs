@@ -169,7 +169,7 @@ impl Default for DebugPanelState {
             drag_offset: Vec2::ZERO,
             show_skeleton: false,
             show_hitboxes: false,
-            current_animation_index: 3, // rifle_home_idle (actual index in GLB)
+            current_animation_index: 0, // Start with first animation
             bloom_intensity: 0.05,
             contrast: 1.0,
             saturation: 1.0,
@@ -515,13 +515,13 @@ fn setup_home_player_animation(
             continue;
         }
         
-        // Setup animation graph and play home idle animation (index 3 in the GLB)
+        // Setup animation graph and play first animation (idle)
         let mut transitions = AnimationTransitions::new();
-        let home_idle_node = AnimationNodeIndex::new(3 + 1); // +1 because node 0 is root
+        let idle_node = animations.get_by_index(0);
         transitions
             .play(
                 &mut player,
-                home_idle_node,
+                idle_node,
                 Duration::from_secs_f32(0.2),
             )
             .repeat();
@@ -977,6 +977,7 @@ fn handle_debug_buttons(
     mut target: ResMut<DebugTarget>,
     mut panel_state: ResMut<DebugPanelState>,
     mut debug_render_context: Option<ResMut<DebugRenderContext>>,
+    shared_animations: Option<Res<SharedAnimations>>,
     mut char_query: Query<
         &mut Transform,
         (With<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>, Without<WarehouseScene>),
@@ -994,6 +995,8 @@ fn handle_debug_buttons(
         (With<WarehouseScene>, Without<HomePlayerModel>, Without<ArmoryScene>, Without<HomeSceneCamera>),
     >,
 ) {
+    // Get animation count, default to 1 if not loaded yet
+    let anim_count = shared_animations.as_ref().map(|a| a.count).unwrap_or(1);
     let move_amount = 0.1;
     let scale_factor = 1.1;
     let rot_amount = 0.1; // radians
@@ -1035,17 +1038,17 @@ fn handle_debug_buttons(
                         if panel_state.current_animation_index > 0 {
                             panel_state.current_animation_index -= 1;
                         } else {
-                            panel_state.current_animation_index = 15; // Wrap to last
+                            panel_state.current_animation_index = anim_count.saturating_sub(1); // Wrap to last
                         }
-                        info!("Animation index: {}", panel_state.current_animation_index);
+                        info!("Animation index: {} / {}", panel_state.current_animation_index, anim_count);
                     }
                     DebugButton::AnimNext => {
-                        if panel_state.current_animation_index < 15 {
+                        if panel_state.current_animation_index < anim_count.saturating_sub(1) {
                             panel_state.current_animation_index += 1;
                         } else {
                             panel_state.current_animation_index = 0; // Wrap to first
                         }
-                        info!("Animation index: {}", panel_state.current_animation_index);
+                        info!("Animation index: {} / {}", panel_state.current_animation_index, anim_count);
                     }
                     _ => {
                         // Position/scale/rotation adjustments
@@ -1272,22 +1275,13 @@ fn save_positions(
     >,
     animation_index: usize,
 ) {
-    // Animation names for reference
-    const ANIM_NAMES: [&str; 16] = [
-        "rifle_firing", "rifle_jump_backward", "rifle_jump", "rifle_aim_idle",
-        "rifle_run", "rifle_run_backward", "rifle_start_walking", "rifle_start_walking_backward",
-        "rifle_stop_walking", "rifle_strafe_left", "rifle_strafe_right", "rifle_stop_walking_backward",
-        "rifle_walking", "rifle_walk_backward", "rifle_die_forward", "rifle_home_idle"
-    ];
-    
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let anim_name = ANIM_NAMES.get(animation_index).unwrap_or(&"unknown");
     let mut output = format!("=== Home Scene Positions ({})\n\n", timestamp);
-    output.push_str(&format!("ANIMATION:\n  index: {}\n  name: {}\n\n", animation_index, anim_name));
+    output.push_str(&format!("ANIMATION:\n  index: {}\n\n", animation_index));
 
     if let Some(t) = char_query.iter().next() {
         let (axis, angle) = t.rotation.to_axis_angle();
@@ -1601,13 +1595,15 @@ fn draw_skeleton_recursive(
 /// Update the animation index display text
 fn update_animation_index_display(
     panel_state: Res<DebugPanelState>,
+    shared_animations: Option<Res<SharedAnimations>>,
     mut query: Query<&mut Text, With<AnimationIndexDisplay>>,
 ) {
     if !panel_state.is_changed() {
         return;
     }
+    let count = shared_animations.as_ref().map(|a| a.count).unwrap_or(0);
     for mut text in &mut query {
-        **text = format!("{}", panel_state.current_animation_index);
+        **text = format!("{}/{}", panel_state.current_animation_index, count);
     }
 }
 
@@ -1623,7 +1619,7 @@ fn update_home_animation_from_index(
         return;
     }
 
-    let Some(_animations) = shared_animations else {
+    let Some(animations) = shared_animations else {
         return;
     };
 
@@ -1631,9 +1627,8 @@ fn update_home_animation_from_index(
     for home_entity in &home_player_query {
         if let Some(anim_entity) = find_animation_player_entity(home_entity, &children_query, &animation_player_query) {
             if let Ok((mut player, mut transitions)) = animation_player_query.get_mut(anim_entity) {
-                // Get the node index for the current animation
-                // Node index 0 is root, so animation clips start at index 1
-                let node_index = AnimationNodeIndex::new(panel_state.current_animation_index + 1);
+                // Get the node index for the current animation using dynamic lookup
+                let node_index = animations.get_by_index(panel_state.current_animation_index);
                 transitions
                     .play(&mut player, node_index, Duration::from_secs_f32(0.2))
                     .repeat();

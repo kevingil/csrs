@@ -52,82 +52,58 @@ impl AnimationState {
 }
 
 // ============================================================================
-// ANIMATION INDICES
+// ANIMATION CONFIG
 // ============================================================================
 
 /// Path to the animation model containing all animations.
-pub const ANIMATION_MODEL_PATH: &str = "models/player_animations.glb";
+pub const ANIMATION_MODEL_PATH: &str = "models/skins/shooter.glb";
 
-/// Animation clip indices matching NLA track order in player_animations.glb
-/// Order: top to bottom in NLA Editor = index 0 to N
-pub mod animation_indices {
-    pub const RIFLE_FIRING: usize = 0;
-    pub const RIFLE_JUMP_BACKWARD: usize = 1;
-    pub const RIFLE_JUMP: usize = 2;
-    pub const RIFLE_AIM_IDLE: usize = 3;
-    pub const RIFLE_RUN: usize = 4;
-    pub const RIFLE_RUN_BACKWARD: usize = 5;
-    pub const RIFLE_START_WALKING: usize = 6;
-    pub const RIFLE_START_WALKING_BACKWARD: usize = 7;
-    pub const RIFLE_STOP_WALKING: usize = 8;
-    pub const RIFLE_STRAFE_LEFT: usize = 9;
-    pub const RIFLE_STRAFE_RIGHT: usize = 10;
-    pub const RIFLE_STOP_WALKING_BACKWARD: usize = 11;
-    pub const RIFLE_WALKING: usize = 12;
-    pub const RIFLE_WALK_BACKWARD: usize = 13;
-    pub const RIFLE_DIE_FORWARD: usize = 14;
-    pub const RIFLE_HOME_IDLE: usize = 15;
-}
-
-/// Total number of animation clips
-pub const TOTAL_ANIMATION_COUNT: usize = 16;
+/// Maximum number of animations to attempt loading from the GLB.
+/// Animations are loaded by index 0..MAX_ANIMATION_COUNT.
+pub const MAX_ANIMATION_COUNT: usize = 50;
 
 // ============================================================================
 // SHARED ANIMATIONS RESOURCE
 // ============================================================================
 
-/// Animation node indices for each state
-#[derive(Debug, Clone)]
-pub struct AnimationNodes {
-    pub idle: AnimationNodeIndex,
-    pub walking: AnimationNodeIndex,
-    pub walking_backward: AnimationNodeIndex,
-    pub running: AnimationNodeIndex,
-    pub running_backward: AnimationNodeIndex,
-    pub strafe_left: AnimationNodeIndex,
-    pub strafe_right: AnimationNodeIndex,
-    pub firing: AnimationNodeIndex,
-    pub jumping: AnimationNodeIndex,
-    pub jumping_backward: AnimationNodeIndex,
-    pub dying: AnimationNodeIndex,
-    pub home_idle: AnimationNodeIndex,
-}
-
 /// Shared animation data - loaded once, used by all players.
+/// Animations are stored dynamically by index.
 #[derive(Resource)]
 pub struct SharedAnimations {
     /// The animation graph handle
     pub graph: Handle<AnimationGraph>,
-    /// Animation nodes for each state
-    pub nodes: AnimationNodes,
+    /// All animation node indices (index 0 = first animation in GLB)
+    pub nodes: Vec<AnimationNodeIndex>,
+    /// Total number of animations loaded
+    pub count: usize,
 }
 
 impl SharedAnimations {
-    /// Get the animation node for a given state
+    /// Get animation node by index, returns first animation if out of bounds
+    pub fn get_by_index(&self, index: usize) -> AnimationNodeIndex {
+        self.nodes.get(index).copied().unwrap_or_else(|| {
+            self.nodes.first().copied().unwrap_or(AnimationNodeIndex::new(0))
+        })
+    }
+
+    /// Get the animation node for a given gameplay state.
+    /// Uses index 0 as fallback for all states until proper mapping is configured.
     pub fn get_node(&self, state: AnimationState) -> AnimationNodeIndex {
-        match state {
-            AnimationState::Idle => self.nodes.idle,
-            AnimationState::Walking => self.nodes.walking,
-            AnimationState::WalkingBackward => self.nodes.walking_backward,
-            AnimationState::Running => self.nodes.running,
-            AnimationState::RunningBackward => self.nodes.running_backward,
-            AnimationState::StrafeLeft => self.nodes.strafe_left,
-            AnimationState::StrafeRight => self.nodes.strafe_right,
-            AnimationState::Firing => self.nodes.firing,
-            AnimationState::Jumping => self.nodes.jumping,
-            AnimationState::JumpingBackward => self.nodes.jumping_backward,
-            AnimationState::Dying => self.nodes.dying,
-        }
+        // Default mapping - adjust these indices based on your shooter.glb animation order
+        let index = match state {
+            AnimationState::Idle => 0,
+            AnimationState::Walking => 1.min(self.count.saturating_sub(1)),
+            AnimationState::WalkingBackward => 2.min(self.count.saturating_sub(1)),
+            AnimationState::Running => 3.min(self.count.saturating_sub(1)),
+            AnimationState::RunningBackward => 4.min(self.count.saturating_sub(1)),
+            AnimationState::StrafeLeft => 5.min(self.count.saturating_sub(1)),
+            AnimationState::StrafeRight => 6.min(self.count.saturating_sub(1)),
+            AnimationState::Firing => 7.min(self.count.saturating_sub(1)),
+            AnimationState::Jumping => 8.min(self.count.saturating_sub(1)),
+            AnimationState::JumpingBackward => 9.min(self.count.saturating_sub(1)),
+            AnimationState::Dying => 10.min(self.count.saturating_sub(1)),
+        };
+        self.get_by_index(index)
     }
 }
 
@@ -185,41 +161,31 @@ const FIRE_DURATION: f32 = 0.3;
 // ============================================================================
 
 /// Load shared animations from the animation model.
+/// Dynamically loads all available animations up to MAX_ANIMATION_COUNT.
 pub fn load_shared_animations(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
 ) {
-    use animation_indices::*;
-    
-    // Load all animation clips
-    let clips: Vec<Handle<AnimationClip>> = (0..TOTAL_ANIMATION_COUNT)
+    // Load animation clips dynamically - try loading up to MAX_ANIMATION_COUNT
+    let clips: Vec<Handle<AnimationClip>> = (0..MAX_ANIMATION_COUNT)
         .map(|i| asset_server.load(GltfAssetLabel::Animation(i).from_asset(ANIMATION_MODEL_PATH)))
         .collect();
-    
-    // Build animation graph
+
+    let count = clips.len();
+    println!("[DEBUG] Loading {} animation clips from {}", count, ANIMATION_MODEL_PATH);
+
+    // Build animation graph from all clips
     let (graph, indices) = AnimationGraph::from_clips(clips);
     let graph_handle = graphs.add(graph);
-    
-    // Map indices to animation nodes
-    let nodes = AnimationNodes {
-        idle: indices[RIFLE_AIM_IDLE],
-        walking: indices[RIFLE_WALKING],
-        walking_backward: indices[RIFLE_WALK_BACKWARD],
-        running: indices[RIFLE_RUN],
-        running_backward: indices[RIFLE_RUN_BACKWARD],
-        strafe_left: indices[RIFLE_STRAFE_LEFT],
-        strafe_right: indices[RIFLE_STRAFE_RIGHT],
-        firing: indices[RIFLE_FIRING],
-        jumping: indices[RIFLE_JUMP],
-        jumping_backward: indices[RIFLE_JUMP_BACKWARD],
-        dying: indices[RIFLE_DIE_FORWARD],
-        home_idle: indices[RIFLE_HOME_IDLE],
-    };
-    
+
+    // Store all node indices
+    let nodes: Vec<AnimationNodeIndex> = indices.into_iter().collect();
+
     commands.insert_resource(SharedAnimations {
         graph: graph_handle,
         nodes,
+        count,
     });
 }
 
@@ -371,10 +337,10 @@ pub fn setup_animation_player(
             controller.animation_player_entity = Some(anim_entity);
         }
 
-        // Initialize with idle animation
+        // Initialize with first animation (idle)
         let mut transitions = AnimationTransitions::new();
         transitions
-            .play(&mut player, animations.nodes.idle, Duration::from_secs_f32(BLEND_DURATION))
+            .play(&mut player, animations.get_by_index(0), Duration::from_secs_f32(BLEND_DURATION))
             .repeat();
 
         commands.entity(anim_entity).insert((
