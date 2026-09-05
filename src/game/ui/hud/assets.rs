@@ -11,7 +11,10 @@ pub struct HudArt {
 }
 impl HudArt {
     pub fn weapon(&self, id: WeaponId) -> Handle<Image> {
-        match id { WeaponId::AK47 => self.rifle.clone(), WeaponId::DefaultKnife => self.knife.clone() }
+        match id {
+            WeaponId::AK47 => self.rifle.clone(),
+            WeaponId::DefaultKnife => self.knife.clone(),
+        }
     }
 }
 pub fn prepare(mut commands: Commands, server: Res<AssetServer>) {
@@ -19,7 +22,10 @@ pub fn prepare(mut commands: Commands, server: Res<AssetServer>) {
         rifle: server.load("generated/ui/ak47.png"),
         knife: server.load("generated/ui/knife.png"),
         headshot: server.load("generated/ui/headshot.png"),
-        portraits: [server.load("generated/ui/attacker_portrait.png"), server.load("generated/ui/defender_portrait.png")],
+        portraits: [
+            server.load("generated/ui/attacker_portrait.png"),
+            server.load("generated/ui/defender_portrait.png"),
+        ],
         font: server.load("fonts/RobotoCondensed.ttf"),
     });
 }
