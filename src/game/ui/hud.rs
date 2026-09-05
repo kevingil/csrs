@@ -49,8 +49,21 @@ impl Plugin for HudPlugin {
         app.add_plugins(super::radar::RadarPlugin)
             .init_resource::<kill_feed::KillFeed>()
             .add_systems(Startup, assets::prepare)
-            .add_systems(Startup, setup.after(super::radar::prepare).after(assets::prepare))
-            .add_systems(Update, (update, kill_feed::update, ranking::update, weapon_slots::update, scale_fonts).chain())
+            .add_systems(
+                Startup,
+                setup.after(super::radar::prepare).after(assets::prepare),
+            )
+            .add_systems(
+                Update,
+                (
+                    update,
+                    kill_feed::update,
+                    ranking::update,
+                    weapon_slots::update,
+                    scale_fonts,
+                )
+                    .chain(),
+            )
             .add_systems(OnEnter(GameState::Loading), kill_feed::clear)
             .add_systems(OnEnter(GameState::MainMenu), kill_feed::clear);
     }
@@ -149,7 +162,6 @@ fn setup(mut commands: Commands, images: Res<HudImages>, art: Res<HudArt>) {
                     ))
                     .with_children(|panel| {
                         panel.spawn((Label::Timer, text("10:00", 17.0, Color::WHITE)));
-
                     });
                 score
                     .spawn((
@@ -171,10 +183,14 @@ fn setup(mut commands: Commands, images: Res<HudImages>, art: Res<HudArt>) {
                     });
             });
             root.spawn(Node {
-                position_type: PositionType::Absolute, top: Val::VMin(12.8),
-                width: Val::Percent(100.0), justify_content: JustifyContent::Center,
-                column_gap: Val::VMin(1.0), ..default()
-            }).with_children(|row| {
+                position_type: PositionType::Absolute,
+                top: Val::VMin(12.8),
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                column_gap: Val::VMin(1.0),
+                ..default()
+            })
+            .with_children(|row| {
                 row.spawn((Label::Mode, text("TDM", 10.0, Color::WHITE)));
                 row.spawn((Label::Score, text("0 : 0", 12.0, Color::WHITE)));
             });
@@ -250,14 +266,17 @@ fn setup(mut commands: Commands, images: Res<HudImages>, art: Res<HudArt>) {
                     ..default()
                 },
             ));
-            root.spawn((AmmoOnly, Node {
-                position_type: PositionType::Absolute,
-                right: Val::Percent(1.0),
-                bottom: Val::Percent(6.0),
-                width: Val::VMin(17.778),
-                height: Val::VMin(0.356),
-                ..default()
-            }))
+            root.spawn((
+                AmmoOnly,
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Percent(1.0),
+                    bottom: Val::Percent(6.0),
+                    width: Val::VMin(17.778),
+                    height: Val::VMin(0.356),
+                    ..default()
+                },
+            ))
             .with_child((
                 Bar::Reload,
                 Node {
@@ -319,14 +338,22 @@ fn setup(mut commands: Commands, images: Res<HudImages>, art: Res<HudArt>) {
         GlobalZIndex(190),
     ));
 }
-fn scale_fonts(windows: Query<&Window>, art: Res<HudArt>, mut fonts: Query<(&HudFont, &mut TextFont)>) {
+fn scale_fonts(
+    windows: Query<&Window>,
+    art: Res<HudArt>,
+    mut fonts: Query<(&HudFont, &mut TextFont)>,
+) {
     let Ok(window) = windows.single() else {
         return;
     };
-    let scale = (window.width() / 1280.0).min(window.height() / 720.0).clamp(0.5, 3.0);
+    let scale = (window.width() / 1280.0)
+        .min(window.height() / 720.0)
+        .clamp(0.5, 3.0);
     for (size, mut font) in &mut fonts {
         font.font_size = size.0 * scale;
-        if font.font != art.font { font.font = art.font.clone(); }
+        if font.font != art.font {
+            font.font = art.font.clone();
+        }
     }
 }
 fn update(
