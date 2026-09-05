@@ -121,12 +121,25 @@ def main():
             CHARACTER_CLIPS,
             {"mixamorig:RightHand", "mixamorig:Head"},
         )
-    for name in ("ak_world", "ak_view"):
+    for name in ("ak_world", "ak_view", "ak_view_soldier", "ak_view_police"):
         validate(
             ROOT / f"assets/generated/{name}.glb",
             WEAPON_CLIPS,
             {"Muzzle", "Magazine", "Bolt", "WeaponGrip"},
         )
+    for name in (
+        "knife_view",
+        "knife_view_soldier",
+        "knife_view_police",
+        "knife_pose_attacker",
+        "knife_pose_defender",
+    ):
+        validate(
+            ROOT / f"assets/generated/{name}.glb",
+            {"idle_knife", "draw_knife", "slash_knife"},
+            {"KnifeGrip"} if name.startswith("knife_view") else {"mixamorig:RightHand"},
+        )
+    validate(ROOT / "assets/generated/knife_world.glb", set(), {"KnifeGrip"})
     document, _ = read_glb(ROOT / "assets/generated/dust2.glb")
     assert len(document["materials"]) == 11
     assert all(
