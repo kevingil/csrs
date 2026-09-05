@@ -3,7 +3,7 @@ use crate::game::{
     assets::GameAssets,
     config::WeaponId,
     matchplay::Combatant,
-    player::{player::PlayerEntity, player_model::PlayerModel},
+    player::{player::PlayerEntity, player_model::PlayerModel, skins::SkinId},
 };
 use bevy::{
     prelude::*,
@@ -17,6 +17,7 @@ use bevy_fps_controller::controller::RenderPlayer;
 pub struct ViewModel {
     actor: Entity,
     weapon_id: WeaponId,
+    skin_index: usize,
     last_action: u64,
     last_equip: u64,
     was_visible: bool,
@@ -104,8 +105,7 @@ fn profile(id: WeaponId) -> Transform {
         WeaponId::AK47 => Vec3::new(0.06, -1.65, -0.30),
         WeaponId::DefaultKnife => Vec3::new(0.0, -1.56, -0.14),
     };
-    Transform::from_translation(offset)
-        .with_rotation(Quat::from_rotation_y(std::f32::consts::PI))
+    Transform::from_translation(offset).with_rotation(Quat::from_rotation_y(std::f32::consts::PI))
 }
 pub fn spawn(
     commands: &mut Commands,
@@ -113,29 +113,47 @@ pub fn spawn(
     gltfs: &Assets<Gltf>,
     actor: Entity,
     _world_camera: Entity,
+    skin: SkinId,
 ) {
+    let skin_index = match skin {
+        SkinId::Soldier => 0,
+        SkinId::Police => 1,
+    };
     let mut roots = Vec::new();
     for weapon_id in [WeaponId::AK47, WeaponId::DefaultKnife] {
         let handle = match weapon_id {
-            WeaponId::AK47 => &assets.arms,
-            WeaponId::DefaultKnife => &assets.knife_view,
+            WeaponId::AK47 => &assets.arms[skin_index],
+            WeaponId::DefaultKnife => &assets.knife_view[skin_index],
         };
         let framing = profile(weapon_id);
-        roots.push(commands.spawn((
-            SceneRoot(gltfs.get(handle).unwrap().scenes[0].clone()),
-            framing,
-            ViewModel {
-                actor, weapon_id, first_person: true, player: None,
-                last_action: 0, last_equip: 0, was_visible: false,
-                last_reload: false, last_shot: 0, nodes: Vec::new(), reload_duration: 0.0,
-            },
-            Visibility::Hidden,
-        )).id());
+        roots.push(
+            commands
+                .spawn((
+                    SceneRoot(gltfs.get(handle).unwrap().scenes[0].clone()),
+                    framing,
+                    ViewModel {
+                        actor,
+                        weapon_id,
+                        skin_index,
+                        first_person: true,
+                        player: None,
+                        last_action: 0,
+                        last_equip: 0,
+                        was_visible: false,
+                        last_reload: false,
+                        last_shot: 0,
+                        nodes: Vec::new(),
+                        reload_duration: 0.0,
+                    },
+                    Visibility::Hidden,
+                ))
+                .id(),
+        );
     }
     let light = commands
         .spawn((
             PointLight {
-                intensity: 400.0,
+                intensity: 1000.0,
                 range: 4.0,
                 shadows_enabled: false,
                 ..default()
@@ -203,19 +221,39 @@ pub fn bind_scenes(
         for entity in descendants.iter_descendants(character) {
             if names.get(entity).is_ok_and(|n| n.as_str() == socket) {
                 for weapon_id in [WeaponId::AK47, WeaponId::DefaultKnife] {
-                    if showcase.is_some() && weapon_id == WeaponId::DefaultKnife { continue; }
-                    let handle = if weapon_id == WeaponId::AK47 { &assets.gun } else { &assets.knife_world };
-                    let Some(asset) = gltfs.get(handle) else { continue; };
+                    if showcase.is_some() && weapon_id == WeaponId::DefaultKnife {
+                        continue;
+                    }
+                    let handle = if weapon_id == WeaponId::AK47 {
+                        &assets.gun
+                    } else {
+                        &assets.knife_world
+                    };
+                    let Some(asset) = gltfs.get(handle) else {
+                        continue;
+                    };
                     commands.entity(entity).with_child((
                         SceneRoot(asset.scenes[0].clone()),
                         Transform::from_scale(Vec3::splat(100.0)),
                         ViewModel {
                             actor: model.map(|m| m.logical_entity).unwrap_or(character),
-                            weapon_id, first_person: false, player: None,
-                            last_action: 0, last_equip: 0, was_visible: false,
-                            last_reload: false, last_shot: 0, nodes: Vec::new(), reload_duration: 0.0,
+                            weapon_id,
+                            skin_index: 0,
+                            first_person: false,
+                            player: None,
+                            last_action: 0,
+                            last_equip: 0,
+                            was_visible: false,
+                            last_reload: false,
+                            last_shot: 0,
+                            nodes: Vec::new(),
+                            reload_duration: 0.0,
                         },
-                        if weapon_id == WeaponId::AK47 { Visibility::Inherited } else { Visibility::Hidden },
+                        if weapon_id == WeaponId::AK47 {
+                            Visibility::Inherited
+                        } else {
+                            Visibility::Hidden
+                        },
                     ));
                 }
                 commands.entity(character).insert(WorldWeapon);
@@ -225,26 +263,39 @@ pub fn bind_scenes(
     }
     for (root, mut model) in &mut models {
         for entity in descendants.iter_descendants(root) {
-            commands.entity(entity).insert(RenderLayers::layer(if model.first_person { 1 } else { 0 }));
+            commands
+                .entity(entity)
+                .insert(RenderLayers::layer(if model.first_person { 1 } else { 0 }));
         }
         // World knife motion belongs to the character's upper-body animation.
         if model.weapon_id == WeaponId::DefaultKnife && !model.first_person {
             if descendants.iter_descendants(root).next().is_some() {
-                commands.entity(root).insert((LayersBound, RenderLayers::layer(0)));
+                commands
+                    .entity(root)
+                    .insert((LayersBound, RenderLayers::layer(0)));
             }
             continue;
         }
         let handle = match (model.weapon_id, model.first_person) {
-            (WeaponId::AK47, true) => &assets.arms,
+            (WeaponId::AK47, true) => &assets.arms[model.skin_index],
             (WeaponId::AK47, false) => &assets.gun,
-            (WeaponId::DefaultKnife, _) => &assets.knife_view,
+            (WeaponId::DefaultKnife, _) => &assets.knife_view[model.skin_index],
         };
-        let Some(gltf) = gltfs.get(handle) else { continue; };
+        let Some(gltf) = gltfs.get(handle) else {
+            continue;
+        };
         let names = if model.weapon_id == WeaponId::AK47 {
             ["idle_rifle", "fire_rifle", "reload_rifle"]
-        } else { ["idle_knife", "slash_knife", "draw_knife"] };
-        let Some(clips) = names.iter().map(|name| gltf.named_animations.get(*name).cloned())
-            .collect::<Option<Vec<_>>>() else { continue; };
+        } else {
+            ["idle_knife", "slash_knife", "draw_knife"]
+        };
+        let Some(clips) = names
+            .iter()
+            .map(|name| gltf.named_animations.get(*name).cloned())
+            .collect::<Option<Vec<_>>>()
+        else {
+            continue;
+        };
         let Some(player) = descendants
             .iter_descendants(root)
             .find(|e| players.contains(*e))
@@ -286,18 +337,40 @@ pub fn bind_scenes(
     }
 }
 pub fn animate_viewmodel(
-    mut models: Query<(&mut ViewModel, &mut Visibility)>,
+    mut models: Query<(
+        &mut ViewModel,
+        &mut Visibility,
+        &mut Transform,
+        Option<&LayersBound>,
+    )>,
     weapons: Query<(&WeaponState, &Combatant)>,
     mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
 ) {
-    for (mut model, mut visibility) in &mut models {
+    for (mut model, mut visibility, mut transform, bound) in &mut models {
+        if bound.is_none() {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
         let Ok((weapon, actor)) = weapons.get(model.actor) else {
             continue;
         };
         let visible = actor.alive() && weapon.active == model.weapon_id;
-        *visibility = if visible { Visibility::Inherited } else { Visibility::Hidden };
-        let Some(entity) = model.player else { continue; };
-        let Ok((mut player, mut transitions)) = players.get_mut(entity) else { continue; };
+        if model.first_person && model.weapon_id == WeaponId::AK47 {
+            *transform = profile(WeaponId::AK47);
+            transform.translation.y -=
+                0.22 * (weapon.equip_remaining / KNIFE.equip_seconds).clamp(0.0, 1.0);
+        }
+        *visibility = if visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        let Some(entity) = model.player else {
+            continue;
+        };
+        let Ok((mut player, mut transitions)) = players.get_mut(entity) else {
+            continue;
+        };
         if !visible {
             player.stop_all();
             model.was_visible = false;
@@ -307,13 +380,23 @@ pub fn animate_viewmodel(
         }
         if model.weapon_id == WeaponId::DefaultKnife {
             if !model.was_visible || model.last_equip != weapon.equips {
-                transitions.play(&mut player, model.nodes[2], std::time::Duration::ZERO)
-                    .replay().set_speed(model.reload_duration / KNIFE.equip_seconds);
+                transitions
+                    .play(&mut player, model.nodes[2], std::time::Duration::ZERO)
+                    .set_speed(model.reload_duration / KNIFE.equip_seconds)
+                    .replay();
             } else if model.last_action != weapon.slashes {
-                transitions.play(&mut player, model.nodes[1], std::time::Duration::ZERO)
-                    .replay().set_speed((17.0 / 30.0) / (KNIFE.windup + KNIFE.recovery));
+                transitions
+                    .play(&mut player, model.nodes[1], std::time::Duration::ZERO)
+                    .set_speed((17.0 / 30.0) / (KNIFE.windup + KNIFE.recovery))
+                    .replay();
             } else if player.all_finished() {
-                transitions.play(&mut player, model.nodes[0], std::time::Duration::from_secs_f32(0.08)).repeat();
+                transitions
+                    .play(
+                        &mut player,
+                        model.nodes[0],
+                        std::time::Duration::from_secs_f32(0.08),
+                    )
+                    .repeat();
             }
             model.last_action = weapon.slashes;
             model.last_equip = weapon.equips;
@@ -321,7 +404,9 @@ pub fn animate_viewmodel(
             continue;
         }
         if !model.was_visible {
-            transitions.play(&mut player, model.nodes[0], std::time::Duration::ZERO).repeat();
+            transitions
+                .play(&mut player, model.nodes[0], std::time::Duration::ZERO)
+                .repeat();
             model.was_visible = true;
         }
         let reloading = weapon.reload_remaining > 0.0;
