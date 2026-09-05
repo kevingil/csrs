@@ -1,22 +1,23 @@
 use bevy::{app::AppExit, prelude::*};
 
-use super::{MenuTab, PlayerSettings};
+use super::{style, MenuTab, PlayerSettings};
 use crate::game::GameState;
 
 pub struct SettingsTabPlugin;
 
 impl Plugin for SettingsTabPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_settings_tab)
-            .add_systems(
-                Update,
-                (
-                    toggle_settings_tab_visibility,
-                    handle_slider_interactions,
-                    update_slider_displays,
-                    handle_quit_button,
-                ),
-            );
+        app.add_systems(Startup, setup_settings_tab).add_systems(
+            Update,
+            (
+                toggle_settings_tab_visibility,
+                handle_slider_interactions
+                    .run_if(in_state(GameState::MainMenu).and(in_state(MenuTab::Settings))),
+                update_slider_displays,
+                handle_quit_button
+                    .run_if(in_state(GameState::MainMenu).and(in_state(MenuTab::Settings))),
+            ),
+        );
     }
 }
 
@@ -40,25 +41,35 @@ struct VolumeSlider;
 
 #[derive(Component)]
 struct VolumeValue;
+#[derive(Component)]
+enum SliderFill {
+    Sensitivity,
+    Fov,
+    Volume,
+}
 
 #[derive(Component)]
 struct QuitGameButton;
 
 // Colors
-const OVERLAY_BG: Color = Color::srgba(0.02, 0.02, 0.05, 0.92);
+const OVERLAY_BG: Color = style::PANEL;
 const SLIDER_BG: Color = Color::srgba(0.1, 0.1, 0.15, 1.0);
-const SLIDER_FILL: Color = Color::srgb(0.2, 0.5, 0.7);
+const SLIDER_FILL: Color = style::ACCENT;
 
-fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
+fn setup_settings_tab(
+    mut commands: Commands,
+    settings: Res<PlayerSettings>,
+    server: Res<AssetServer>,
+) {
     // Settings tab overlay
     commands
         .spawn((
             SettingsTabRoot,
             Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
+                right: Val::Px(56.0),
+                bottom: Val::Px(0.0),
                 position_type: PositionType::Absolute,
-                top: Val::Px(70.0),
+                top: Val::Px(style::HEADER),
                 left: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(40.0)),
@@ -74,6 +85,7 @@ fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
             parent.spawn((
                 Text::new("SETTINGS"),
                 TextFont {
+                    font: server.load("fonts/RobotoCondensed.ttf"),
                     font_size: 32.0,
                     ..default()
                 },
@@ -106,19 +118,28 @@ fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
                             .with_children(|label_row| {
                                 label_row.spawn((
                                     Text::new("Mouse Sensitivity"),
-                                    TextFont { font_size: 18.0, ..default() },
+                                    TextFont {
+                                        font: server.load("fonts/RobotoCondensed.ttf"),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
                                     TextColor(Color::srgb(0.8, 0.8, 0.8)),
                                 ));
                                 label_row.spawn((
                                     SensitivityValue,
                                     Text::new(format!("{:.2}", settings.sensitivity)),
-                                    TextFont { font_size: 18.0, ..default() },
+                                    TextFont {
+                                        font: server.load("fonts/RobotoCondensed.ttf"),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
                                     TextColor(Color::WHITE),
                                 ));
                             });
 
                             row.spawn((
                                 SensitivitySlider,
+                                bevy::ui::RelativeCursorPosition::default(),
                                 Button,
                                 Node {
                                     width: Val::Percent(100.0),
@@ -129,6 +150,7 @@ fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
                                 BorderRadius::all(Val::Px(4.0)),
                             ))
                             .with_child((
+                                SliderFill::Sensitivity,
                                 Node {
                                     width: Val::Percent(sens_normalized * 100.0),
                                     height: Val::Percent(100.0),
@@ -156,19 +178,28 @@ fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
                             .with_children(|label_row| {
                                 label_row.spawn((
                                     Text::new("Field of View"),
-                                    TextFont { font_size: 18.0, ..default() },
+                                    TextFont {
+                                        font: server.load("fonts/RobotoCondensed.ttf"),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
                                     TextColor(Color::srgb(0.8, 0.8, 0.8)),
                                 ));
                                 label_row.spawn((
                                     FovValue,
                                     Text::new(format!("{:.0}°", settings.fov)),
-                                    TextFont { font_size: 18.0, ..default() },
+                                    TextFont {
+                                        font: server.load("fonts/RobotoCondensed.ttf"),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
                                     TextColor(Color::WHITE),
                                 ));
                             });
 
                             row.spawn((
                                 FovSlider,
+                                bevy::ui::RelativeCursorPosition::default(),
                                 Button,
                                 Node {
                                     width: Val::Percent(100.0),
@@ -179,6 +210,7 @@ fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
                                 BorderRadius::all(Val::Px(4.0)),
                             ))
                             .with_child((
+                                SliderFill::Fov,
                                 Node {
                                     width: Val::Percent(fov_normalized * 100.0),
                                     height: Val::Percent(100.0),
@@ -206,19 +238,28 @@ fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
                             .with_children(|label_row| {
                                 label_row.spawn((
                                     Text::new("Master Volume"),
-                                    TextFont { font_size: 18.0, ..default() },
+                                    TextFont {
+                                        font: server.load("fonts/RobotoCondensed.ttf"),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
                                     TextColor(Color::srgb(0.8, 0.8, 0.8)),
                                 ));
                                 label_row.spawn((
                                     VolumeValue,
                                     Text::new(format!("{:.0}%", settings.master_volume * 100.0)),
-                                    TextFont { font_size: 18.0, ..default() },
+                                    TextFont {
+                                        font: server.load("fonts/RobotoCondensed.ttf"),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
                                     TextColor(Color::WHITE),
                                 ));
                             });
 
                             row.spawn((
                                 VolumeSlider,
+                                bevy::ui::RelativeCursorPosition::default(),
                                 Button,
                                 Node {
                                     width: Val::Percent(100.0),
@@ -229,6 +270,7 @@ fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
                                 BorderRadius::all(Val::Px(4.0)),
                             ))
                             .with_child((
+                                SliderFill::Volume,
                                 Node {
                                     width: Val::Percent(vol_normalized * 100.0),
                                     height: Val::Percent(100.0),
@@ -258,12 +300,13 @@ fn setup_settings_tab(mut commands: Commands, settings: Res<PlayerSettings>) {
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgb(0.6, 0.2, 0.2)),
+                    BackgroundColor(style::INK),
                     BorderRadius::all(Val::Px(6.0)),
                 ))
                 .with_child((
                     Text::new("Quit Game"),
                     TextFont {
+                        font: server.load("fonts/RobotoCondensed.ttf"),
                         font_size: 18.0,
                         ..default()
                     },
@@ -292,82 +335,75 @@ fn toggle_settings_tab_visibility(
 }
 
 fn handle_slider_interactions(
-    sensitivity_query: Query<(&Interaction, &Node, &GlobalTransform), With<SensitivitySlider>>,
-    fov_query: Query<
-        (&Interaction, &Node, &GlobalTransform),
-        (With<FovSlider>, Without<SensitivitySlider>),
-    >,
-    volume_query: Query<
-        (&Interaction, &Node, &GlobalTransform),
-        (With<VolumeSlider>, Without<SensitivitySlider>, Without<FovSlider>),
-    >,
-    windows: Query<&Window>,
+    sensitivity: Query<(&Interaction, &bevy::ui::RelativeCursorPosition), With<SensitivitySlider>>,
+    fov: Query<(&Interaction, &bevy::ui::RelativeCursorPosition), With<FovSlider>>,
+    volume: Query<(&Interaction, &bevy::ui::RelativeCursorPosition), With<VolumeSlider>>,
     mut settings: ResMut<PlayerSettings>,
 ) {
-    let Ok(window) = windows.single() else {
-        return;
-    };
-
-    let Some(cursor_pos) = window.cursor_position() else {
-        return;
-    };
-
-    // Handle sensitivity slider
-    for (interaction, node, transform) in &sensitivity_query {
+    for (interaction, cursor) in &sensitivity {
         if *interaction == Interaction::Pressed {
-            if let Some(new_value) = calculate_slider_value(cursor_pos, node, transform, 0.1, 3.0) {
-                settings.sensitivity = new_value;
+            if let Some(p) = cursor.normalized {
+                settings.sensitivity = 0.1 + p.x.clamp(0., 1.) * 2.9;
             }
         }
     }
-
-    // Handle FOV slider
-    for (interaction, node, transform) in &fov_query {
+    for (interaction, cursor) in &fov {
         if *interaction == Interaction::Pressed {
-            if let Some(new_value) = calculate_slider_value(cursor_pos, node, transform, 60.0, 120.0) {
-                settings.fov = new_value;
+            if let Some(p) = cursor.normalized {
+                settings.fov = 60. + p.x.clamp(0., 1.) * 60.;
             }
         }
     }
-
-    // Handle volume slider
-    for (interaction, node, transform) in &volume_query {
+    for (interaction, cursor) in &volume {
         if *interaction == Interaction::Pressed {
-            if let Some(new_value) = calculate_slider_value(cursor_pos, node, transform, 0.0, 1.0) {
-                settings.master_volume = new_value;
+            if let Some(p) = cursor.normalized {
+                settings.master_volume = p.x.clamp(0., 1.);
             }
         }
     }
-}
-
-fn calculate_slider_value(
-    cursor_pos: Vec2,
-    node: &Node,
-    transform: &GlobalTransform,
-    min: f32,
-    max: f32,
-) -> Option<f32> {
-    let width = match node.width {
-        Val::Px(w) => w,
-        Val::Percent(p) => p * 5.0,
-        _ => return None,
-    };
-
-    let left = transform.translation().x - width / 2.0;
-    let normalized = ((cursor_pos.x - left) / width).clamp(0.0, 1.0);
-    Some(min + normalized * (max - min))
 }
 
 fn update_slider_displays(
     settings: Res<PlayerSettings>,
-    mut sens_query: Query<&mut Text, (With<SensitivityValue>, Without<FovValue>, Without<VolumeValue>)>,
-    mut fov_query: Query<&mut Text, (With<FovValue>, Without<SensitivityValue>, Without<VolumeValue>)>,
-    mut vol_query: Query<&mut Text, (With<VolumeValue>, Without<SensitivityValue>, Without<FovValue>)>,
+    mut fills: Query<(&SliderFill, &mut Node)>,
+    mut sens_query: Query<
+        &mut Text,
+        (
+            With<SensitivityValue>,
+            Without<FovValue>,
+            Without<VolumeValue>,
+        ),
+    >,
+    mut fov_query: Query<
+        &mut Text,
+        (
+            With<FovValue>,
+            Without<SensitivityValue>,
+            Without<VolumeValue>,
+        ),
+    >,
+    mut vol_query: Query<
+        &mut Text,
+        (
+            With<VolumeValue>,
+            Without<SensitivityValue>,
+            Without<FovValue>,
+        ),
+    >,
 ) {
     if !settings.is_changed() {
         return;
     }
 
+    for (kind, mut node) in &mut fills {
+        node.width = Val::Percent(
+            match kind {
+                SliderFill::Sensitivity => (settings.sensitivity - 0.1) / 2.9,
+                SliderFill::Fov => (settings.fov - 60.) / 60.,
+                SliderFill::Volume => settings.master_volume,
+            } * 100.,
+        );
+    }
     if let Ok(mut text) = sens_query.single_mut() {
         **text = format!("{:.2}", settings.sensitivity);
     }
