@@ -42,9 +42,14 @@ fn setup(mut commands: Commands, skins: Res<SkinRegistry>, server: Res<AssetServ
                 },
             ));
             root.spawn(label("AK-47 · Equipped", 18., WHITE));
-            root.spawn((ImageNode::new(server.load("generated/ui/knife.png")), Node {
-                width: Val::Px(150.0), aspect_ratio: Some(3.0), ..default()
-            }));
+            root.spawn((
+                ImageNode::new(server.load("generated/ui/knife.png")),
+                Node {
+                    width: Val::Px(150.0),
+                    aspect_ratio: Some(3.0),
+                    ..default()
+                },
+            ));
             root.spawn(label("Default Knife · Equipped", 18.0, WHITE));
             root.spawn(label("CHARACTER", 15., MUTED));
             for skin in &skins.skins {

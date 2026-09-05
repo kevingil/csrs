@@ -61,10 +61,7 @@ fn icon(width: usize, height: usize, polygons: &[&[(f32, f32)]]) -> Image {
     }
     texture(width, height, data)
 }
-pub(super) fn prepare(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-) {
+pub(super) fn prepare(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let shield = icon(
         32,
         40,
