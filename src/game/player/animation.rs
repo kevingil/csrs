@@ -1,5 +1,7 @@
 use super::{player_model::PlayerModel, skins::SkinId};
-use crate::game::{assets::GameAssets, config::WeaponId, matchplay::Combatant, weapons::WeaponState};
+use crate::game::{
+    assets::GameAssets, config::WeaponId, matchplay::Combatant, weapons::WeaponState,
+};
 use bevy::prelude::*;
 use bevy_fps_controller::controller::{FpsController, FpsControllerInput};
 use bevy_rapier3d::prelude::Velocity;
@@ -133,9 +135,13 @@ pub fn prepare_graphs(
             .iter()
             .map(|index| graph.add_clip_with_mask(clips[*index].clone(), 2, 1.0, graph.root))
             .collect();
-        let Some(knife) = gltfs.get(&assets.knife_poses[profile_index]) else { return; };
+        let Some(knife) = gltfs.get(&assets.knife_poses[profile_index]) else {
+            return;
+        };
         for name in ["idle_knife", "slash_knife", "draw_knife"] {
-            let Some(clip) = knife.named_animations.get(name) else { return; };
+            let Some(clip) = knife.named_animations.get(name) else {
+                return;
+            };
             upper.push(graph.add_clip_with_mask(clip.clone(), 2, 1.0, graph.root));
         }
         let clip = gltf
@@ -226,7 +232,11 @@ pub fn detect_animation_state(
             continue;
         };
         let speed = velocity.linvel.xz().length();
-        animation.action = if weapon.active == WeaponId::DefaultKnife { weapon.slashes } else { weapon.shots };
+        animation.action = if weapon.active == WeaponId::DefaultKnife {
+            weapon.slashes
+        } else {
+            weapon.shots
+        };
         animation.locomotion = if controller.ground_tick == 0 && velocity.linvel.y.abs() > 0.7 {
             8
         } else if input.crouch {
@@ -251,7 +261,13 @@ pub fn detect_animation_state(
         animation.state = if !actor.alive() {
             11
         } else if weapon.active == WeaponId::DefaultKnife {
-            if weapon.equip_remaining > 0.0 { 14 } else if weapon.knife_remaining > 0.0 { 13 } else { 12 }
+            if weapon.equip_remaining > 0.0 {
+                14
+            } else if weapon.knife_remaining > 0.0 {
+                13
+            } else {
+                12
+            }
         } else if weapon.reload_remaining > 0.0 {
             7
         } else if weapon.flash_remaining > 0.0 {
@@ -275,7 +291,8 @@ pub fn update_player_animations(
         };
         if controller.state == controller.previous
             && controller.locomotion == controller.previous_locomotion
-            && (![6, 13].contains(&controller.state) || controller.action == controller.previous_action)
+            && (![6, 13].contains(&controller.state)
+                || controller.action == controller.previous_action)
         {
             continue;
         }
@@ -325,7 +342,10 @@ pub fn update_player_animations(
                 player.play(shared.upper[0]).replay();
             }
             if controller.state == 13 && controller.action != controller.previous_action {
-                player.play(shared.upper[4]).replay().set_speed((17.0 / 30.0) / 0.55);
+                player
+                    .play(shared.upper[4])
+                    .set_speed((17.0 / 30.0) / 0.55)
+                    .replay();
             }
             if controller.state == 14 {
                 player.play(shared.upper[5]).set_speed((11.0 / 30.0) / 0.35);
