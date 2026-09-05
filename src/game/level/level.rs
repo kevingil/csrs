@@ -75,7 +75,14 @@ fn start_loading_map_config(
         {
             server.reload(path.without_label());
         }
-        for asset in assets.skins.iter().chain([&assets.arms, &assets.gun]) {
+        for asset in assets
+            .skins
+            .iter()
+            .chain(assets.arms.iter())
+            .chain(assets.knife_view.iter())
+            .chain(assets.knife_poses.iter())
+            .chain([&assets.gun, &assets.knife_world])
+        {
             if let Some(path) = server.get_path(asset.id()) {
                 server.reload(path);
             }
@@ -229,7 +236,7 @@ fn load_level(
             }
         }
     }
-    for handle in [&assets.arms, &assets.gun] {
+    for handle in assets.arms.iter().chain([&assets.gun]) {
         let Some(gltf) = gltfs.get(handle) else {
             return;
         };
@@ -248,13 +255,36 @@ fn load_level(
         }
     }
     for (label, handle, clips) in [
-        ("Knife view", &assets.knife_view, &["idle_knife", "draw_knife", "slash_knife"][..]),
+        (
+            "Knife Soldier view",
+            &assets.knife_view[0],
+            &["idle_knife", "draw_knife", "slash_knife"][..],
+        ),
+        (
+            "Knife Police view",
+            &assets.knife_view[1],
+            &["idle_knife", "draw_knife", "slash_knife"][..],
+        ),
         ("Knife world", &assets.knife_world, &[][..]),
-        ("Attacker knife pose", &assets.knife_poses[0], &["idle_knife", "draw_knife", "slash_knife"][..]),
-        ("Defender knife pose", &assets.knife_poses[1], &["idle_knife", "draw_knife", "slash_knife"][..]),
+        (
+            "Attacker knife pose",
+            &assets.knife_poses[0],
+            &["idle_knife", "draw_knife", "slash_knife"][..],
+        ),
+        (
+            "Defender knife pose",
+            &assets.knife_poses[1],
+            &["idle_knife", "draw_knife", "slash_knife"][..],
+        ),
     ] {
-        let Some(gltf) = gltfs.get(handle) else { return; };
-        if gltf.scenes.is_empty() || clips.iter().any(|name| !gltf.named_animations.contains_key(*name)) {
+        let Some(gltf) = gltfs.get(handle) else {
+            return;
+        };
+        if gltf.scenes.is_empty()
+            || clips
+                .iter()
+                .any(|name| !gltf.named_animations.contains_key(*name))
+        {
             status.message = format!("{label} export is missing a scene or required knife clip");
             next.set(GameState::LoadFailed);
             return;
