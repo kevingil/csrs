@@ -45,6 +45,9 @@ impl Plugin for DebugPlugin {
                     .run_if(in_state(GameState::Playing)),
             );
         }
+        if std::env::var_os("CSRS_CAPTURE_KILLS").is_some() {
+            app.add_systems(Update, capture_kills.run_if(in_state(GameState::Playing)));
+        }
         if std::env::var_os("CSRS_CAPTURE").is_some() {
             app.add_systems(Update, capture)
                 .add_systems(OnEnter(GameState::Finished), capture_result);
@@ -195,6 +198,17 @@ fn demo(
     } else {
         4.5
     };
+    if std::env::var_os("CSRS_KNIFE_DEMO").is_some() {
+        use crate::game::{config::WeaponId, weapons::WeaponSelection};
+        intent.selection = Some(WeaponSelection::Select(if t < 4.0 || t >= 7.0 {
+            WeaponId::DefaultKnife
+        } else {
+            WeaponId::AK47
+        }));
+        intent.fire = (2.0..2.15).contains(&t) || (4.5..5.0).contains(&t);
+        intent.reload = (6.5..6.7).contains(&t);
+        return;
+    }
     intent.fire = t > 1.0 && t < fire_until;
     intent.reload = t > 4.5 && t < 4.7;
     input.crouch = t > 9.0 && t < 11.0;
@@ -358,7 +372,7 @@ fn recover_asset(
         info!("Failure recovery: required missing asset correctly rejected");
     }
     if !*recovered && seen.is_some_and(|t| time.elapsed_secs() - t > 2.0) {
-        assets.arms = server.load("generated/ak_view.glb");
+        assets.arms[0] = server.load("generated/ak_view_soldier.glb");
         next.set(GameState::Loading);
         *recovered = true;
     }
@@ -400,6 +414,10 @@ fn capture_result(
 /// Capture authored weapon phases against match time, independent of load time.
 fn capture_weapon_phases(
     mut commands: Commands,
+    weapons: Query<
+        &crate::game::weapons::WeaponState,
+        With<crate::game::player::player::LocalPlayer>,
+    >,
     session: Res<crate::game::matchplay::MatchSession>,
     mut phase: Local<usize>,
 ) {
@@ -413,7 +431,20 @@ fn capture_weapon_phases(
         (6.92, "recover"),
         (7.2, "ready"),
     ];
-    let Some(&(at, name)) = PHASES.get(*phase) else {
+    let phases = if std::env::var_os("CSRS_KNIFE_DEMO").is_some() {
+        &[
+            (0.1, "knife-draw"),
+            (0.7, "knife-idle"),
+            (2.16, "knife-contact"),
+            (2.5, "knife-recovery"),
+            (4.7, "ak-fire"),
+            (6.8, "ak-reload"),
+            (7.5, "knife-after-cancel"),
+        ][..]
+    } else {
+        PHASES
+    };
+    let Some(&(at, name)) = phases.get(*phase) else {
         return;
     };
     if session.elapsed >= at {
@@ -425,6 +456,42 @@ fn capture_weapon_phases(
             "Weapon capture: {} at match time {:.3}",
             name, session.elapsed
         );
+        if let Ok(weapon) = weapons.single() {
+            info!(
+                "Captured equipment: {:?}, ammo {}/{}, reload {:.3}, equips {}, slashes {}",
+                weapon.active,
+                weapon.magazine,
+                weapon.reserve,
+                weapon.reload_remaining,
+                weapon.equips,
+                weapon.slashes
+            );
+        }
         *phase += 1;
     }
+}
+
+/// Capture real kill events after the HUD has received them; never synthesize scores.
+fn capture_kills(
+    mut commands: Commands,
+    mut kills: EventReader<crate::game::matchplay::KillNotice>,
+    mut captured: Local<u32>,
+) {
+    let count = kills.read().count();
+    if count == 0 || *captured >= 3 {
+        return;
+    }
+    let Ok(path) = std::env::var("CSRS_CAPTURE") else {
+        return;
+    };
+    *captured += 1;
+    let path = std::path::Path::new(&path);
+    let name = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("match");
+    let capture = path.with_file_name(format!("{name}-kill-{}.png", *captured));
+    commands
+        .spawn(Screenshot::primary_window())
+        .observe(save_to_disk(capture));
 }
