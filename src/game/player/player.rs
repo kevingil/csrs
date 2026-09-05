@@ -253,6 +253,7 @@ fn init_player(
                     &gltfs,
                     body,
                     camera,
+                    loadout.selected_skin,
                 );
             }
         }

@@ -110,7 +110,7 @@ impl Plugin for WeaponPlugin {
                 (
                     viewmodel::bind_scenes,
                     viewmodel::bind_muzzles,
-                    viewmodel::animate_viewmodel,
+                    viewmodel::animate_viewmodel.run_if(in_state(GameState::Playing)),
                     viewmodel::animate_flashes,
                 )
                     .chain(),
