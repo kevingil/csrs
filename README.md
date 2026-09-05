@@ -8,16 +8,17 @@ An open-source tactical first-person shooter built with Rust and Bevy. The curre
 cargo run --locked --bin open-strike
 ```
 
-Open **Play**, select **Deathmatch / Dust 2**, then click **Start Game**. Inventory browses available equipment; **Load Out** equips Soldier or Police, selecting the corresponding team and world character. Both teams use the completed AK-47 loadout. Home shows an animated character in a separate A-site scene viewed from Long A. Hover the right profile rail to open Friends; click pins it, Tab focuses it, and Escape closes it. The local placeholder shows **no friends**. Human networking remains v2.
+Open **Play**, select **Deathmatch / Dust 2**, then click **Start Game**. Inventory browses available equipment; **Load Out** equips Soldier or Police, selecting the corresponding team and world character. Both teams carry an AK-47 and one Default Knife. Bots currently use the AK. Home shows an animated character in a separate A-site scene viewed from Long A. Hover the right profile rail to open Friends; click pins it, Tab focuses it, and Escape closes it. The local placeholder shows **no friends**. Human networking remains v2.
 
-- WASD: move; mouse: aim; hold left mouse: automatic fire.
+- WASD: move; mouse: aim; hold left mouse: AK automatic fire or repeated knife slashes.
+- 1: AK-47; 3: Default Knife; Q: previous weapon. Switching cancels an unfinished reload and preserves AK ammunition.
 - R: reload; Space: jump; Left Shift: sprint; Left Ctrl: crouch.
 - Esc: pause/resume. Losing window focus pauses the local match.
 - At the result screen: Enter restarts; Esc returns to the menu.
 
-Gameplay is first person only. The HUD uses a rotating circular radar, team alive counts and scores, match clock, health/armor, ammunition, weapon slot and kill feed. Radar shows living teammates, not hidden enemies. C4, bomb objectives, economy and networked 5v5 are outside this version.
+Gameplay is first person only. The HUD uses a rotating circular radar, a live TDM portrait ranking ordered by individual kills, team scores, match clock, health/armor, ammunition, two weapon slots, and an icon-based kill feed. Dead participants remain in the ranking with dimmed portraits. Knife selection hides ammunition. Kill notices use team colors and show headshots only for lethal AK head hits. Radar shows living teammates, not hidden enemies. C4, bomb objectives, economy and networked 5v5 are outside this version.
 
-Default TDM: one human and two bots against three bots; 10 minutes or 50 team kills; 3-second respawn; 2-second spawn protection that ends when firing; no friendly damage (teammates still block bullets). AK: 30-round magazine, 120 reserve, 600 RPM, 2.5-second reload. Armor absorbs 25% of incoming damage while available and resets on respawn. These are prototype tuning values, not an exact CS:GO ballistics simulation.
+Default TDM: one human and two bots against three bots; 10 minutes or 50 team kills; 3-second respawn; 2-second spawn protection that ends when firing; no friendly damage (teammates still block bullets). AK: 30-round magazine, 120 reserve, 600 RPM, 2.5-second reload. Armor absorbs 25% of incoming damage while available and resets on respawn. Knife: 1.5 m reach, 40 base damage, 0.15-second windup, 0.40-second recovery, and 0.35-second equip. A strike hits one target at most; walls, teammates and spawn protection block damage. These are prototype tuning values, not an exact CS:GO ballistics simulation.
 
 ## Build
 
@@ -163,3 +164,43 @@ RUST_LOG=info CSRS_MENU_SCENARIO=1 CSRS_CAPTURE=/tmp/menu.png CSRS_EXIT_AFTER=65
 ```
 
 This opt-in native scenario exercises menu handlers, equipping, Play, 3v3 loading, pause/resume, return and restart. Screenshots go to `/private/tmp/csrs-menu-*.png`. It uses in-engine input state, not OS input injection; physical pointer hover remains a manual check. `CSRS_MENU_MISSING=1` checks cosmetic-scene failure. With `CSRS_CAPTURE` set, `CSRS_WIDTH` and `CSRS_HEIGHT` select a fixed diagnostic window size at startup. Use a fresh launch per size; changing window resolution programmatically during rendering is not part of this diagnostic.
+
+### Default knife and HUD assets
+
+Generate the authored knife, first-person gloves, world attachment, character
+upper-body clips, portraits, and weapon/headshot icons with Blender 4.2:
+
+```sh
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python tools/export_knife.py
+```
+
+The editable source is `assets/models/weapons/default_knife.blend`. The exporter
+reads the existing AK arm and character assets without modifying them. Knife
+clips and the `KnifeGrip` socket are checked before match loading completes.
+
+The existing native weapon-capture workflow supports `CSRS_KNIFE_DEMO=1` together
+with `CSRS_DEMO=1` and `CSRS_WEAPON_CAPTURE=<directory>`. It captures draw, idle,
+slash contact/recovery, AK fire/reload, and switching away from an unfinished
+reload through normal weapon intents. This is opt-in rendering diagnostics.
+
+### Dedicated first-person arms
+
+Soldier and Police now use separate first-person sleeve/glove variants derived
+from the supplied DJMaesen arm model, selected by the equipped `SkinId` for both
+AK and knife. The full-body character mesh is not rendered as first-person arms.
+The existing AK fire, magazine, charging-handle and reload wrist motion is
+retained. First-person elbow placement is authored separately; world characters
+and weapon attachments keep their existing assets.
+
+Rebuild these variants **after** the base AK/knife exporters:
+
+```sh
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python tools/export_viewmodels.py
+```
+
+The base `ak_view.glb` and `knife_view.glb` remain motion inputs. The new exporter
+rebuilds all four character/weapon variants without overwriting those inputs or
+the supplied reference. Its explicit bone mapping retains reference UVs and
+textures, fits gloves to the existing weapon contacts, continues the open upper
+sleeves behind the camera, and restores head-relative weapon sockets after the
+Blender round trip. See `ASSET_LICENSES.md` for attribution and modifications.
