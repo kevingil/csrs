@@ -99,14 +99,16 @@ fn play(
     volume: f32,
     spatial: bool,
 ) -> Entity {
-    commands.spawn((
-        PlayerEntity,
-        AudioPlayer(clip),
-        PlaybackSettings::DESPAWN
-            .with_spatial(spatial)
-            .with_volume(Volume::Linear(volume)),
-        Transform::from_translation(position),
-    )).id()
+    commands
+        .spawn((
+            PlayerEntity,
+            AudioPlayer(clip),
+            PlaybackSettings::DESPAWN
+                .with_spatial(spatial)
+                .with_volume(Volume::Linear(volume)),
+            Transform::from_translation(position),
+        ))
+        .id()
 }
 fn sounds(
     mut commands: Commands,
@@ -139,23 +141,38 @@ fn sounds(
         let canceled = state.reload_cancellations != weapon.reload_cancellations || !actor.alive();
         if canceled {
             for (sound, owner) in &reload_sounds {
-                if owner.0 == entity { commands.entity(sound).despawn(); }
+                if owner.0 == entity {
+                    commands.entity(sound).despawn();
+                }
             }
         }
         if actor.alive() && (!state.alive || state.equips != weapon.equips) {
             play(
                 &mut commands,
-                if weapon.active == WeaponId::DefaultKnife { cues.knife_draw.clone() } else { cues.draw.clone() },
+                if weapon.active == WeaponId::DefaultKnife {
+                    cues.knife_draw.clone()
+                } else {
+                    cues.draw.clone()
+                },
                 transform.translation,
                 settings.master_volume * 0.4,
                 Some(entity) != local,
             );
         }
-        if actor.alive() && weapon.slashes != state.slashes {
-            play(&mut commands, cues.knife_slash.clone(), transform.translation,
-                settings.master_volume * 0.4, Some(entity) != local);
+        if actor.alive() && state.alive && weapon.slashes > state.slashes {
+            play(
+                &mut commands,
+                cues.knife_slash.clone(),
+                transform.translation,
+                settings.master_volume * 0.4,
+                Some(entity) != local,
+            );
         }
-        if actor.alive() && !canceled && weapon.active == WeaponId::AK47 && (reloading || state.reload_remaining > 0.0) {
+        if actor.alive()
+            && !canceled
+            && weapon.active == WeaponId::AK47
+            && (reloading || state.reload_remaining > 0.0)
+        {
             let previous = if state.reload_remaining > 0.0 {
                 AK47.reload_seconds - state.reload_remaining
             } else {
