@@ -1,7 +1,11 @@
 .DS_Store
 /target
 /tools/__pycache__/
+.ruff_cache
 
+# Private planning files
+.plans/
+.cursor/
 # Private downloaded recordings and local sound overrides.
 /assets/audio/csgo/
 /assets/audio/local/
