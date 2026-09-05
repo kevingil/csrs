@@ -216,11 +216,15 @@ def author_menu_hold(rig, idle):
     # Y-up/Z-up conversion. Only the mesh side needs that conversion here.
     socket_rotation = Quaternion((w, x, y, z)) @ basis.inverted()
     right_rotation = socket_rotation.inverted()
-    left_rotation = hands["Left"].to_quaternion()
-    # Match the pistol grip surface used by bake_weapon, not the wrist pivot.
-    grip_center = Vector((0.0, 0.03866998, -0.03627182))
+    # Turn the palm partly across the handguard to align it with the forearm.
+    left_rotation = Quaternion((0, 0, 1), -0.65) @ hands["Left"].to_quaternion()
+    # Seat the curled fingers around the upper grip, below the trigger guard.
+    grip_center = Vector((0.0, 0.025, 0.006))
+    # Keep the rifle's authored trajectory independent of wrist placement.
+    carry_reference = Vector((0.0, 0.03866998, -0.03627182))
     support = Vector((-0.025, -0.265, 0.035))
     socket_offset = palm_offsets["Right"] - right_rotation.inverted() @ grip_center
+    carry_offset = palm_offsets["Right"] - right_rotation.inverted() @ carry_reference
 
     for bone in rig.pose.bones:
         bone.matrix_basis = finger_basis.get(bone.name, Matrix.Identity(4))
@@ -327,9 +331,12 @@ def author_menu_hold(rig, idle):
         gun_rotation = Quaternion((0, 0, 1), 1.40 + 0.025 * sin(phase)) @ Quaternion(
             (1, 0, 0), -0.10 + 0.012 * breath
         )
-        right = Vector((-0.18 + shift * 0.4, -0.25, 1.12 + 0.006 * breath))
         wrist_rotation = gun_rotation @ right_rotation
-        origin = right + wrist_rotation @ socket_offset
+        origin = (
+            Vector((-0.18 + shift * 0.4, -0.25, 1.12 + 0.006 * breath))
+            + wrist_rotation @ carry_offset
+        )
+        right = origin - wrist_rotation @ socket_offset
         left = (
             origin
             + gun_rotation @ support
@@ -343,8 +350,30 @@ def author_menu_hold(rig, idle):
                 [f"mixamorig:{side}{part}" for part in ["Arm", "ForeArm", "Hand"]],
                 target,
                 rotation,
-                Vector((-0.3 if side == "Right" else 0.3, 0, -1)),
+                # Tuck the support elbow down and forward instead of forcing
+                # it outside the wrist, against the direction of the palm.
+                Vector((0, -0.7, -1)) if side == "Left" else Vector((-0.3, 0, -1)),
             )
+        # Curl the index independently of the three fingers around the grip.
+        # Its distal pad reaches the trigger inside the guard from the near side.
+        distal = rig.pose.bones["mixamorig:RightHandIndex3"]
+        # Use the exported fingertip joint: Blender synthesizes display tails
+        # for imported glTF bones, and those are not the skinned finger lengths.
+        distal_matrix = rig.matrix_world @ distal.matrix
+        fingertip = rig.pose.bones["mixamorig:RightHandIndex4"]
+        distal_axis = rig.matrix_world.to_3x3() @ (fingertip.head - distal.head)
+        pad_direction = gun_rotation @ Vector((1, 0, 0))
+        distal_rotation = (
+            distal_axis.rotation_difference(pad_direction)
+            @ distal_matrix.to_quaternion()
+        )
+        trigger = origin + gun_rotation @ Vector((-0.003, -0.022, 0.033))
+        reach(
+            [f"mixamorig:RightHandIndex{i}" for i in [1, 2, 3]],
+            trigger - pad_direction * distal_axis.length,
+            distal_rotation,
+            gun_rotation @ Vector((-1, 0, 0)),
+        )
         for bone in rig.pose.bones:
             bone.rotation_mode = "QUATERNION"
             bone.keyframe_insert("rotation_quaternion", frame=frame)
