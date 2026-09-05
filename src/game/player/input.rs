@@ -1,8 +1,8 @@
 use super::player::LocalPlayer;
 use crate::game::{
     config::{PlayerSettings, WeaponId},
-    weapons::WeaponSelection,
     matchplay::{ActorIntent, Combatant},
+    weapons::WeaponSelection,
 };
 use bevy::{input::mouse::MouseMotion, prelude::*, window::PrimaryWindow};
 use bevy_fps_controller::controller::FpsControllerInput;

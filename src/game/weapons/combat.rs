@@ -90,7 +90,9 @@ pub fn simulate_weapons(
                     let rotation = Quat::from_euler(EulerRot::YXZ, input.yaw, input.pitch, 0.0);
                     let origin = transform.translation + Vec3::Y * (controller.height * 0.5 - 0.15);
                     let predicate = |hit: Entity| {
-                        if hit == entity { return false; }
+                        if hit == entity {
+                            return false;
+                        }
                         if let Ok(zone) = zones.get(hit) {
                             return zone.player_entity != entity
                                 && living.iter().any(|(e, _, _)| *e == zone.player_entity);
@@ -98,15 +100,27 @@ pub fn simulate_weapons(
                         !living.iter().any(|(e, _, _)| *e == hit)
                     };
                     if let Some((hit, _)) = physics.cast_ray(
-                        origin, rotation * -Vec3::Z, KNIFE.range, true,
-                        QueryFilter::default().exclude_rigid_body(entity).predicate(&predicate),
+                        origin,
+                        rotation * -Vec3::Z,
+                        KNIFE.range,
+                        true,
+                        QueryFilter::default()
+                            .exclude_rigid_body(entity)
+                            .predicate(&predicate),
                     ) {
                         if let Ok(zone) = zones.get(hit) {
-                            if living.iter().any(|(e, team, protection)|
-                                *e == zone.player_entity && *team != actor.team && *protection <= 0.0)
-                            {
-                                damage.push((entity, zone.player_entity, KNIFE.damage,
-                                    WeaponId::DefaultKnife, false));
+                            if living.iter().any(|(e, team, protection)| {
+                                *e == zone.player_entity
+                                    && *team != actor.team
+                                    && *protection <= 0.0
+                            }) {
+                                damage.push((
+                                    entity,
+                                    zone.player_entity,
+                                    KNIFE.damage,
+                                    WeaponId::DefaultKnife,
+                                    false,
+                                ));
                             }
                         } else if targets.contains(hit) {
                             commands.entity(hit).insert(DeadTarget);
