@@ -18,6 +18,7 @@ struct Cues {
     reload: [(f32, Handle<AudioSource>); 3],
     hit: [Handle<AudioSource>; 5],
     step: [Handle<AudioSource>; 4],
+    walk_loop: Option<Handle<AudioSource>>,
 }
 #[derive(Component)]
 pub struct AudioState {
@@ -30,6 +31,8 @@ pub struct AudioState {
     last_position: Vec3,
     distance: f32,
     step_index: usize,
+    walk_voice: Option<Entity>,
+    walk_tick: Option<std::time::Duration>,
     hit_index: usize,
 }
 impl Default for AudioState {
@@ -44,6 +47,8 @@ impl Default for AudioState {
             last_position: Vec3::ZERO,
             distance: 0.0,
             step_index: 0,
+            walk_voice: None,
+            walk_tick: None,
             hit_index: 0,
         }
     }
@@ -57,6 +62,17 @@ impl Plugin for WeaponAudioPlugin {
     }
 }
 fn prepare(mut commands: Commands, mut library: ResMut<SoundLibrary>, server: Res<AssetServer>) {
+    info!(
+        "Knife equip sound: {}",
+        library.catalog["weapons/knife_draw"].path
+    );
+    let walk_loop = library.load("misc/step_test_loop", &server);
+    if walk_loop.is_some() {
+        info!(
+            "Walking loop: {}",
+            library.catalog["misc/step_test_loop"].path
+        );
+    }
     let mut recording = |id| {
         library
             .load(id, &server)
@@ -88,6 +104,7 @@ fn prepare(mut commands: Commands, mut library: ResMut<SoundLibrary>, server: Re
             recording("physics/drywall_footstep3"),
             recording("physics/drywall_footstep4"),
         ],
+        walk_loop,
     });
 }
 #[derive(Component)]
@@ -112,6 +129,7 @@ fn play(
 }
 fn sounds(
     mut commands: Commands,
+    fixed_time: Res<Time<Fixed>>,
     mut shots: EventReader<ShotFired>,
     reload_sounds: Query<(Entity, &ReloadSound)>,
     cues: Res<Cues>,
@@ -204,12 +222,45 @@ fn sounds(
             state.hit_index = (state.hit_index + 1) % cues.hit.len();
         }
         let traveled = transform.translation.distance(state.last_position);
-        if traveled < 1.0 && actor.alive() && controller.ground_tick > 0 {
+        let grounded = traveled < 1.0 && actor.alive() && controller.ground_tick > 0;
+        if let Some(clip) = &cues.walk_loop {
+            // Horizontal displacement measures actual movement, including
+            // collision blocking. Ignore sub-millimeter physics jitter.
+            let walking = grounded
+                && transform
+                    .translation
+                    .xz()
+                    .distance_squared(state.last_position.xz())
+                    > 0.000001;
+            // Render frames between physics ticks repeat the same position;
+            // they must not stop/restart a continuously walking actor's loop.
+            let new_tick = state.walk_tick != Some(fixed_time.elapsed());
+            state.walk_tick = Some(fixed_time.elapsed());
+            if walking && new_tick && state.walk_voice.is_none() {
+                let voice = commands
+                    .spawn((
+                        AudioPlayer(clip.clone()),
+                        PlaybackSettings::LOOP
+                            .with_spatial(Some(entity) != local)
+                            .with_volume(Volume::Linear(settings.master_volume * 0.35)),
+                        Transform::default(),
+                    ))
+                    .id();
+                // Actor ownership follows its position and cleans up on exit.
+                commands.entity(entity).add_child(voice);
+                state.walk_voice = Some(voice);
+            } else if (!walking && new_tick) || !actor.alive() {
+                if let Some(voice) = state.walk_voice.take() {
+                    commands.entity(voice).despawn();
+                }
+            }
+            state.distance = 0.0;
+        } else if grounded {
             state.distance += traveled;
         } else {
             state.distance = 0.0;
         }
-        if state.distance > 1.6 {
+        if cues.walk_loop.is_none() && state.distance > 1.6 {
             state.distance = 0.0;
             play(
                 &mut commands,
