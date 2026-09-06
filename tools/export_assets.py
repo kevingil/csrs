@@ -171,7 +171,7 @@ def ground_action(rig, objects, action):
 
 
 def author_menu_hold(rig, idle):
-    """Bake a planted, relaxed carry with both palms locked to the rifle.
+    """Bake a planted, chest-high diagonal carry with both palms locked to the rifle.
 
     MenuWeaponSocket compensates for the world rifle's wrist-based origin.
     Contacts use the inspected AK geometry, in metres, before carry rotation.
@@ -311,8 +311,8 @@ def author_menu_hold(rig, idle):
             foot = feet[side]
             target = foot.translation + Vector(
                 (
-                    -0.035 if side == "Right" else 0.035,
-                    0.035 if side == "Right" else -0.025,
+                    -0.060 if side == "Right" else 0.060,
+                    0.065 if side == "Right" else -0.040,
                     0,
                 )
             )
@@ -328,12 +328,14 @@ def author_menu_hold(rig, idle):
         turn("Spine2", Quaternion((0, 0, 1), yaw * 0.12))
         turn("Neck", Quaternion((0, 0, 1), yaw * 0.3))
         turn("Head", Quaternion((0, 0, 1), yaw * 0.7) @ Quaternion((1, 0, 0), pitch))
+        # Raise the muzzle across the chest while keeping both hand contacts
+        # attached to the same rigid rifle transform throughout the idle loop.
         gun_rotation = Quaternion((0, 0, 1), 1.40 + 0.025 * sin(phase)) @ Quaternion(
-            (1, 0, 0), -0.10 + 0.012 * breath
+            (1, 0, 0), -0.22 + 0.012 * breath
         )
         wrist_rotation = gun_rotation @ right_rotation
         origin = (
-            Vector((-0.18 + shift * 0.4, -0.25, 1.12 + 0.006 * breath))
+            Vector((-0.18 + shift * 0.4, -0.25, 1.14 + 0.006 * breath))
             + wrist_rotation @ carry_offset
         )
         right = origin - wrist_rotation @ socket_offset
