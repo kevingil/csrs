@@ -32,35 +32,77 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
     commands
         .spawn((
             MenuPage(MenuTab::Play),
-            page(),
-            BackgroundColor(Color::srgba(0.04, 0.05, 0.06, 0.76)),
+            Node {
+                padding: UiRect::ZERO,
+                row_gap: Val::Px(0.),
+                ..page()
+            },
+            BackgroundColor(Color::srgba(0.16, 0.19, 0.22, 0.68)),
             GlobalZIndex(150),
         ))
         .with_children(|root| {
-            root.spawn(label("PLAY", 30., WHITE));
             root.spawn((
                 Node {
-                    align_self: AlignSelf::Start,
-                    ..button()
+                    width: Val::Percent(100.),
+                    min_height: Val::Px(58.),
+                    flex_shrink: 0.,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border: UiRect::bottom(Val::Px(1.)),
+                    ..default()
                 },
-                BackgroundColor(SELECTED),
-                BorderColor(ACCENT),
+                BorderColor(Color::srgba(1., 1., 1., 0.14)),
             ))
-            .with_child(label(LocalMatchOption::LABEL, 19., WHITE));
+            .with_children(|modes| {
+                modes
+                    .spawn((
+                        Node {
+                            padding: UiRect::axes(Val::Px(20.), Val::Px(9.)),
+                            ..button()
+                        },
+                        BackgroundColor(GLASS_SELECTED),
+                        BorderColor(ACCENT),
+                    ))
+                    .with_child(label(LocalMatchOption::LABEL.to_uppercase(), 17., ACCENT));
+            });
             root.spawn(Node {
+                display: Display::Grid,
+                grid_template_columns: RepeatedGridTrack::flex(3, 1.),
                 flex_grow: 1.,
-                column_gap: Val::Vw(4.),
-                align_items: AlignItems::Center,
+                min_height: Val::Px(0.),
+                padding: UiRect::all(Val::VMin(4.)),
+                column_gap: Val::VMin(3.),
+                align_items: AlignItems::Start,
+                overflow: Overflow::scroll_y(),
                 ..default()
             })
             .with_children(|row| {
+                row.spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(18.),
+                    width: Val::Percent(100.),
+                    max_width: Val::Px(280.),
+                    min_width: Val::Px(0.),
+                    padding: UiRect::top(Val::Px(12.)),
+                    ..default()
+                })
+                .with_children(|info| {
+                    info.spawn(label("Deathmatch", 28., WHITE));
+                    info.spawn((MatchDetails, label("", 17., WHITE)));
+                    info.spawn(label(
+                        "Eliminate the opposing team.\nRespawn and rejoin the fight.",
+                        16.,
+                        MUTED,
+                    ));
+                });
                 row.spawn((
                     MapCard,
                     Button,
                     Node {
                         width: Val::VMin(30.),
                         height: Val::VMin(49.),
-                        min_width: Val::Px(180.),
+                        max_width: Val::Percent(100.),
+                        justify_self: JustifySelf::Center,
                         border: UiRect::all(Val::Px(2.)),
                         flex_direction: FlexDirection::Column,
                         justify_content: JustifyContent::End,
@@ -104,33 +146,29 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
                         name.spawn(label("DEATHMATCH", 12., ACCENT));
                     });
                 });
-                row.spawn(Node {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(18.),
-                    max_width: Val::Vw(40.),
-                    ..default()
-                })
-                .with_children(|info| {
-                    info.spawn(label("Deathmatch", 32., WHITE));
-                    info.spawn((MatchDetails, label("", 17., WHITE)));
-                    info.spawn(label(
-                        "Eliminate the opposing team.\nRespawn and rejoin the fight.",
-                        16.,
-                        MUTED,
-                    ));
-                });
             });
             root.spawn((
-                StartGameButton,
-                Button,
                 Node {
-                    align_self: AlignSelf::End,
-                    ..button()
+                    width: Val::Percent(100.),
+                    flex_shrink: 0.,
+                    justify_content: JustifyContent::End,
+                    padding: UiRect::axes(Val::VMin(4.), Val::Px(16.)),
+                    border: UiRect::top(Val::Px(1.)),
+                    ..default()
                 },
-                BackgroundColor(SELECTED),
-                BorderColor(ACCENT),
+                BorderColor(Color::srgba(1., 1., 1., 0.14)),
             ))
-            .with_child(label("START GAME", 21., WHITE));
+            .with_children(|footer| {
+                footer
+                    .spawn((
+                        StartGameButton,
+                        Button,
+                        button(),
+                        BackgroundColor(SELECTED),
+                        BorderColor(ACCENT),
+                    ))
+                    .with_child(label("START GAME", 21., WHITE));
+            });
         });
 }
 fn details(config: Res<GameConfig>, mut labels: Query<&mut Text, With<MatchDetails>>) {
