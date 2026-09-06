@@ -14,6 +14,15 @@ struct Scenario {
     at: f32,
 }
 pub fn install(app: &mut App) {
+    // Open the picker directly for a native screenshot without running the scenario.
+    if std::env::var_os("CSRS_CAPTURE").is_some() && std::env::var_os("CSRS_CAPTURE_PLAY").is_some()
+    {
+        app.add_systems(
+            OnEnter(GameState::MainMenu),
+            (|mut next: ResMut<NextState<MenuTab>>| next.set(MenuTab::Play))
+                .after(super::reset_menu),
+        );
+    }
     if std::env::var_os("CSRS_MENU_SCENARIO").is_some() {
         app.init_resource::<Scenario>()
             .add_systems(PreUpdate, run.after(bevy::ui::UiSystem::Focus));
