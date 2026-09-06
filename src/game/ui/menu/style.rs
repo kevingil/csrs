@@ -2,11 +2,11 @@
 use bevy::prelude::*;
 pub const HEADER: f32 = 64.0;
 pub const INK: Color = Color::srgba(0.045, 0.055, 0.065, 0.88);
-pub const GLASS: Color = Color::srgba(0.34, 0.43, 0.50, 0.38);
+pub const GLASS: Color = Color::srgba(0.055, 0.075, 0.095, 0.84);
 pub const GLASS_SELECTED: Color = Color::srgba(0.30, 0.54, 0.63, 0.30);
 pub const PANEL: Color = Color::srgba(0.055, 0.067, 0.078, 0.86);
-pub const WHITE: Color = Color::srgb(0.92, 0.93, 0.91);
-pub const MUTED: Color = Color::srgb(0.65, 0.69, 0.70);
+pub const WHITE: Color = Color::srgb(0.97, 0.98, 0.99);
+pub const MUTED: Color = Color::srgb(0.80, 0.84, 0.87);
 pub const ACCENT: Color = Color::srgb(0.35, 0.80, 0.86);
 pub const SELECTED: Color = Color::srgba(0.17, 0.36, 0.40, 0.86);
 #[derive(Component)]
@@ -27,7 +27,7 @@ pub fn label(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
         TextColor(color),
         TextShadow {
             offset: Vec2::splat(1.0),
-            color: Color::srgba(0., 0., 0., 0.6),
+            color: Color::srgba(0., 0., 0., 0.8),
         },
     )
 }
