@@ -22,6 +22,17 @@ pub fn install(app: &mut App) {
             (|mut next: ResMut<NextState<MenuTab>>| next.set(MenuTab::Play))
                 .after(super::reset_menu),
         );
+        if std::env::var_os("CSRS_CAPTURE_START_HOVER").is_some() {
+            app.add_systems(
+                PreUpdate,
+                (|mut buttons: Query<&mut Interaction, With<StartGameButton>>| {
+                    for mut interaction in &mut buttons {
+                        *interaction = Interaction::Hovered;
+                    }
+                })
+                .after(bevy::ui::UiSystem::Focus),
+            );
+        }
     }
     if std::env::var_os("CSRS_MENU_SCENARIO").is_some() {
         app.init_resource::<Scenario>()
