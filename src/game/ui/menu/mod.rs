@@ -6,6 +6,7 @@ use bevy::prelude::*;
 pub mod debug_widgets;
 mod diagnostics;
 pub mod friends_drawer;
+mod glass;
 pub mod home_scene;
 pub mod home_tab;
 pub mod inventory_tab;
@@ -47,6 +48,7 @@ impl Plugin for MenuPlugin {
             .add_systems(OnEnter(GameState::MainMenu), reset_menu)
             .add_systems(Update, (show_pages, style::apply_fonts))
             .add_plugins((
+                glass::MenuGlassPlugin,
                 nav_bar::NavBarPlugin,
                 home_scene::HomeScenePlugin,
                 home_tab::HomeTabPlugin,

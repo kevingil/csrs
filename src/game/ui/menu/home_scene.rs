@@ -36,7 +36,12 @@ impl Plugin for HomeScenePlugin {
             )
             .add_systems(
                 Update,
-                (update_showcase_skin, asset_status, fit_camera)
+                (
+                    update_showcase_skin,
+                    showcase_visibility,
+                    asset_status,
+                    fit_camera,
+                )
                     .run_if(in_state(GameState::MainMenu)),
             )
             .add_systems(
@@ -282,6 +287,7 @@ fn setup_home_scene(
     commands.spawn((
         HomeSceneEntity,
         HomeSceneCamera,
+        super::glass::MenuGlassSettings::default(),
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
             fov: MENU_VERTICAL_FOV.to_radians(),
@@ -394,6 +400,18 @@ fn fit_camera(windows: Query<&Window>, mut cameras: Query<&mut Projection, With<
 fn cleanup_home_scene(mut commands: Commands, query: Query<Entity, With<HomeSceneEntity>>) {
     for entity in &query {
         commands.entity(entity).despawn();
+    }
+}
+fn showcase_visibility(
+    tab: Res<State<super::MenuTab>>,
+    mut models: Query<&mut Visibility, With<HomePlayerModel>>,
+) {
+    for mut visibility in &mut models {
+        *visibility = if *tab.get() == super::MenuTab::Play {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
     }
 }
 fn update_showcase_skin(
