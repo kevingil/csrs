@@ -1,5 +1,9 @@
 //! Blur the scene under menu chrome before the separate UI camera draws sharp text.
 use super::{friends_drawer::DrawerRoot, style::HEADER, MenuTab};
+use crate::game::{
+    ui::pause_menu::{ExitConfirmation, GlassDialog},
+    GameState,
+};
 use bevy::{
     core_pipeline::{
         core_3d::graph::{Core3d, Node3d},
@@ -34,7 +38,7 @@ impl Plugin for MenuGlassPlugin {
             ExtractComponentPlugin::<MenuGlassSettings>::default(),
             UniformComponentPlugin::<MenuGlassSettings>::default(),
         ))
-        .add_systems(PostUpdate, sync_glass);
+        .add_systems(PostUpdate, sync_glass.after(bevy::ui::UiSystem::PostLayout));
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .add_render_graph_node::<ViewNodeRunner<GlassNode>>(Core3d, GlassLabel)
@@ -65,37 +69,87 @@ mod shader_uniform {
     pub struct MenuGlassSettings {
         // Logical window size and chrome extents keep the blur consistent across DPI scales.
         pub(super) geometry: Vec4,
+        pub(super) dialog: Vec4,
     }
 }
 pub(super) use shader_uniform::MenuGlassSettings;
 
 fn sync_glass(
+    mut commands: Commands,
     windows: Query<&Window, With<PrimaryWindow>>,
     drawers: Query<&Node, With<DrawerRoot>>,
+    dialogs: Query<(&ComputedNode, &GlobalTransform), With<GlassDialog>>,
     ui_scale: Res<UiScale>,
+    game: Res<State<GameState>>,
     tab: Res<State<MenuTab>>,
-    mut settings: Query<&mut MenuGlassSettings>,
+    confirmation: Res<ExitConfirmation>,
+    mut cameras: Query<(Entity, &Camera, Option<&mut MenuGlassSettings>), With<Camera3d>>,
 ) {
-    let (Ok(window), Ok(drawer)) = (windows.single(), drawers.single()) else {
+    let Ok(window) = windows.single() else {
         return;
     };
-    let Val::Px(width) = drawer.width else {
-        return;
+    let menu = *game.get() == GameState::MainMenu;
+    let modal = *game.get() == GameState::Paused || (menu && confirmation.open);
+    let size = Vec2::new(window.width(), window.height()) / ui_scale.0;
+    let drawer_width = if menu {
+        drawers.single().map_or(0., |drawer| match drawer.width {
+            Val::Px(width) => width,
+            _ => 0.,
+        })
+    } else {
+        0.
     };
-    for mut settings in &mut settings {
-        settings.geometry = Vec4::new(
-            window.width() / ui_scale.0,
-            window.height() / ui_scale.0,
-            if matches!(
+    let dialog = if modal {
+        dialogs.single().map_or(Vec4::ZERO, |(node, transform)| {
+            let scale = node.inverse_scale_factor();
+            let center = transform.translation().truncate() * scale;
+            let half_size = node.size() * scale * 0.5;
+            let min = center - half_size;
+            let max = center + half_size;
+            Vec4::new(min.x, min.y, max.x, max.y)
+        })
+    } else {
+        Vec4::ZERO
+    };
+    let glass = MenuGlassSettings {
+        geometry: Vec4::new(
+            size.x,
+            size.y,
+            if !menu {
+                0.
+            } else if matches!(
                 *tab.get(),
                 MenuTab::Play | MenuTab::Inventory | MenuTab::Settings
             ) {
-                window.height() / ui_scale.0
+                size.y
             } else {
                 HEADER
             },
-            width,
-        );
+            drawer_width,
+        ),
+        dialog,
+    };
+    // Frost the final 3D composite, including the first-person weapon, once.
+    // Removing the component on resume also skips the post-process entirely.
+    let target = if menu || modal {
+        cameras
+            .iter()
+            .filter(|(_, camera, _)| camera.is_active)
+            .max_by_key(|(_, camera, _)| camera.order)
+            .map(|(entity, _, _)| entity)
+    } else {
+        None
+    };
+    for (entity, _, settings) in &mut cameras {
+        if Some(entity) == target {
+            if let Some(mut settings) = settings {
+                *settings = glass;
+            } else {
+                commands.entity(entity).insert(glass);
+            }
+        } else if settings.is_some() {
+            commands.entity(entity).remove::<MenuGlassSettings>();
+        }
     }
 }
 
