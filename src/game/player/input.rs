@@ -46,7 +46,7 @@ pub fn human_input(
         intent.selection = Some(WeaponSelection::Select(WeaponId::AK47));
     } else if keys.just_pressed(KeyCode::Digit3) {
         intent.selection = Some(WeaponSelection::Select(WeaponId::DefaultKnife));
-    } else if keys.just_pressed(KeyCode::KeyQ) {
+    } else if keys.just_pressed(KeyCode::KeyF) {
         intent.selection = Some(WeaponSelection::Previous);
     }
 }
