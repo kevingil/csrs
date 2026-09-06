@@ -1,4 +1,4 @@
-//! Bundled original cues with optional, explicitly selected local overrides.
+//! Bundled original cues with a local catalog and optional explicit pack selection.
 use bevy::{asset::LoadState, prelude::*};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -24,7 +24,13 @@ impl Default for SoundLibrary {
         let mut catalog: BTreeMap<String, SoundClip> =
             bevy::asset::ron::from_str(include_str!("../../assets/audio/generated/catalog.ron"))
                 .expect("The bundled sound catalog must be valid");
-        if let Some(path) = std::env::var_os("OPEN_STRIKE_AUDIO_PACK") {
+        let override_path = std::env::var_os("OPEN_STRIKE_AUDIO_PACK")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                let local = std::path::PathBuf::from("assets/audio/local/catalog.ron");
+                local.is_file().then_some(local)
+            });
+        if let Some(path) = override_path {
             match std::fs::read_to_string(&path)
                 .map_err(|error| error.to_string())
                 .and_then(|text| {
@@ -42,7 +48,9 @@ impl Default for SoundLibrary {
                             .all(|part| matches!(part, std::path::Component::Normal(_)))
                             && path.extension().is_some_and(|extension| extension == "wav")
                             && std::path::Path::new("assets").join(path).is_file();
-                        if valid && catalog.contains_key(&id) {
+                        // This optional walking loop replaces the discrete
+                        // fallback steps only when selected by a local pack.
+                        if valid && (catalog.contains_key(&id) || id == "misc/step_test_loop") {
                             catalog.insert(id, clip);
                             selected += 1;
                         }
