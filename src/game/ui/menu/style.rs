@@ -2,6 +2,8 @@
 use bevy::prelude::*;
 pub const HEADER: f32 = 64.0;
 pub const INK: Color = Color::srgba(0.045, 0.055, 0.065, 0.88);
+pub const GLASS: Color = Color::srgba(0.34, 0.43, 0.50, 0.38);
+pub const GLASS_SELECTED: Color = Color::srgba(0.30, 0.54, 0.63, 0.30);
 pub const PANEL: Color = Color::srgba(0.055, 0.067, 0.078, 0.86);
 pub const WHITE: Color = Color::srgb(0.92, 0.93, 0.91);
 pub const MUTED: Color = Color::srgb(0.65, 0.69, 0.70);
