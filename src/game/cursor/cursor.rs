@@ -1,4 +1,4 @@
-use crate::game::GameState;
+use crate::game::{ui::pause_menu::ExitConfirmation, GameState};
 use bevy::{
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow},
@@ -28,6 +28,7 @@ fn manage_cursor(
     keys: Res<ButtonInput<KeyCode>>,
     state: Res<State<GameState>>,
     mut next: ResMut<NextState<GameState>>,
+    mut confirmation: ResMut<ExitConfirmation>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     if *state.get() == GameState::Playing
@@ -37,6 +38,10 @@ fn manage_cursor(
         next.set(GameState::Paused);
     }
     if keys.just_pressed(KeyCode::Escape) {
+        if confirmation.open {
+            confirmation.open = false;
+            return;
+        }
         match state.get() {
             GameState::Playing => next.set(GameState::Paused),
             GameState::Paused => next.set(GameState::Playing),
