@@ -1,4 +1,9 @@
-use super::{scene_definition::menu_scene, style::*, LocalMatchOption, MenuPage, MenuTab};
+use super::{
+    scene_definition::menu_scene,
+    start_button::{self, StartButtonMaterial},
+    style::*,
+    LocalMatchOption, MenuPage, MenuTab,
+};
 use crate::game::{
     config::{GameConfig, MapId},
     GameState,
@@ -16,6 +21,7 @@ struct StartPending(bool);
 impl Plugin for PlayTabPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StartPending>()
+            .add_plugins(UiMaterialPlugin::<StartButtonMaterial>::default())
             .add_systems(Startup, setup)
             .add_systems(
                 OnEnter(GameState::MainMenu),
@@ -23,12 +29,16 @@ impl Plugin for PlayTabPlugin {
             )
             .add_systems(
                 Update,
-                (interact, details)
+                (interact, details, start_button::animate)
                     .run_if(in_state(GameState::MainMenu).and(in_state(MenuTab::Play))),
             );
     }
 }
-fn setup(mut commands: Commands, server: Res<AssetServer>) {
+fn setup(
+    mut commands: Commands,
+    server: Res<AssetServer>,
+    mut button_materials: ResMut<Assets<StartButtonMaterial>>,
+) {
     commands
         .spawn((
             MenuPage(MenuTab::Play),
@@ -163,11 +173,24 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
                     .spawn((
                         StartGameButton,
                         Button,
-                        button(),
-                        BackgroundColor(SELECTED),
-                        BorderColor(ACCENT),
+                        Node {
+                            width: Val::Px(260.),
+                            max_width: Val::Percent(100.),
+                            height: Val::Px(52.),
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            ..default()
+                        },
+                        MaterialNode(button_materials.add(StartButtonMaterial::default())),
+                        BoxShadow::new(
+                            start_button::LABEL_COLOR.with_alpha(0.),
+                            Val::Px(0.),
+                            Val::Px(0.),
+                            Val::Px(1.),
+                            Val::Px(9.),
+                        ),
                     ))
-                    .with_child(label("START GAME", 21., WHITE));
+                    .with_child(label("START GAME", 21., start_button::LABEL_COLOR));
             });
         });
 }

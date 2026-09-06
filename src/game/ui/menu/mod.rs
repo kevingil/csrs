@@ -15,6 +15,7 @@ pub mod nav_bar;
 pub mod play_tab;
 pub mod scene_definition;
 pub mod settings_tab;
+mod start_button;
 pub mod style;
 #[derive(States, Default, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum MenuTab {
