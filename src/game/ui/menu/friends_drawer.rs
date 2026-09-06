@@ -1,6 +1,6 @@
 //! A local view only: no simulated online presence or social service.
-use super::style::*;
-use crate::game::GameState;
+use super::{style::*, MenuPage};
+use crate::game::{ui::pause_menu::ExitConfirmation, GameState};
 use bevy::{prelude::*, window::PrimaryWindow};
 pub struct FriendsDrawerPlugin;
 #[derive(Resource)]
@@ -24,6 +24,9 @@ impl Default for DrawerState {
 }
 #[derive(Component)]
 pub(super) struct DrawerRoot;
+/// Clip menu chrome and pages beneath the drawer without resizing their layout.
+#[derive(Component)]
+pub(super) struct DrawerClip;
 #[derive(Component)]
 struct DrawerContent;
 #[derive(Component)]
@@ -32,13 +35,67 @@ impl Plugin for FriendsDrawerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DrawerState>()
             .add_systems(Startup, setup)
+            .add_systems(PostStartup, setup_page_clip)
             .add_systems(Update, update)
+            .add_systems(
+                PostUpdate,
+                clip_to_drawer.before(bevy::ui::UiSystem::Layout),
+            )
             .add_systems(
                 OnExit(GameState::MainMenu),
                 |mut state: ResMut<DrawerState>| *state = default(),
             );
     }
 }
+fn setup_page_clip(mut commands: Commands, pages: Query<Entity, With<MenuPage>>) {
+    let clip = commands
+        .spawn((
+            DrawerClip,
+            Name::new("Menu pages clipped behind Friends"),
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.),
+                right: Val::Px(56.),
+                top: Val::Px(0.),
+                bottom: Val::Px(0.),
+                overflow: Overflow::clip_x(),
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    // Pages keep their original viewport-sized containing block as the clip narrows.
+    let viewport = commands
+        .spawn((
+            ChildOf(clip),
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.),
+                top: Val::Px(0.),
+                width: Val::Vw(100.),
+                height: Val::Vh(100.),
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    for page in &pages {
+        commands.entity(page).insert(ChildOf(viewport));
+    }
+}
+
+fn clip_to_drawer(
+    drawers: Query<&Node, With<DrawerRoot>>,
+    mut clips: Query<&mut Node, (With<DrawerClip>, Without<DrawerRoot>)>,
+) {
+    let Ok(drawer) = drawers.single() else {
+        return;
+    };
+    for mut clip in &mut clips {
+        clip.right = drawer.width;
+    }
+}
+
 fn setup(mut commands: Commands) {
     commands
         .spawn((
@@ -109,6 +166,7 @@ fn setup(mut commands: Commands) {
 fn update(
     time: Res<Time>,
     game: Res<State<GameState>>,
+    confirmation: Res<ExitConfirmation>,
     windows: Query<&Window, With<PrimaryWindow>>,
     keys: Res<ButtonInput<KeyCode>>,
     clicks: Query<&Interaction, (Changed<Interaction>, With<ProfileButton>)>,
@@ -124,7 +182,7 @@ fn update(
     };
     let active = *game.get() == GameState::MainMenu;
     root.display = if active { Display::Flex } else { Display::None };
-    if !active {
+    if !active || confirmation.open {
         return;
     }
     let expanded = 300_f32.min(window.width() * 0.75);
