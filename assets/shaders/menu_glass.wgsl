@@ -2,7 +2,6 @@
 
 struct MenuGlassSettings {
     geometry: vec4<f32>,
-    dialog: vec4<f32>,
 }
 
 @group(0) @binding(0) var scene: texture_2d<f32>;
@@ -15,8 +14,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let pixel = in.uv * size;
     let under_header = pixel.y < settings.geometry.z;
     let under_drawer = pixel.x >= size.x - settings.geometry.w;
-    let under_dialog = all(pixel >= settings.dialog.xy) && all(pixel < settings.dialog.zw);
-    if !under_header && !under_drawer && !under_dialog {
+    if !under_header && !under_drawer {
         return textureSampleLevel(scene, scene_sampler, in.uv, 0.0);
     }
 
@@ -31,9 +29,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         let uv = in.uv + vec2<f32>(distance / size.x, 0.0);
 #else
         var uv = in.uv + vec2<f32>(0.0, distance / size.y);
-        if under_dialog && !under_header && !under_drawer {
-            uv.y = clamp(uv.y, (settings.dialog.y + 0.5) / size.y, (settings.dialog.w - 0.5) / size.y);
-        } else if under_header && !under_drawer {
+        if under_header && !under_drawer {
             // The horizontal pass only frosts chrome. Extend the header's edge
             // instead of pulling sharp, unprocessed scene pixels into this pass.
             uv.y = min(uv.y, (settings.geometry.z - 0.5) / size.y);

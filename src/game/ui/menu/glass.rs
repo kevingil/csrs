@@ -1,9 +1,6 @@
 //! Blur the scene under menu chrome before the separate UI camera draws sharp text.
 use super::{friends_drawer::DrawerRoot, style::HEADER, MenuTab};
-use crate::game::{
-    ui::pause_menu::{ExitConfirmation, GlassDialog},
-    GameState,
-};
+use crate::game::{ui::pause_menu::ExitConfirmation, GameState};
 use bevy::{
     core_pipeline::{
         core_3d::graph::{Core3d, Node3d},
@@ -38,7 +35,12 @@ impl Plugin for MenuGlassPlugin {
             ExtractComponentPlugin::<MenuGlassSettings>::default(),
             UniformComponentPlugin::<MenuGlassSettings>::default(),
         ))
-        .add_systems(PostUpdate, sync_glass.after(bevy::ui::UiSystem::PostLayout));
+        .add_systems(
+            PostUpdate,
+            sync_glass
+                .after(bevy::ui::UiSystem::PostLayout)
+                .after(TransformSystem::TransformPropagate),
+        );
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .add_render_graph_node::<ViewNodeRunner<GlassNode>>(Core3d, GlassLabel)
@@ -69,7 +71,6 @@ mod shader_uniform {
     pub struct MenuGlassSettings {
         // Logical window size and chrome extents keep the blur consistent across DPI scales.
         pub(super) geometry: Vec4,
-        pub(super) dialog: Vec4,
     }
 }
 pub(super) use shader_uniform::MenuGlassSettings;
@@ -78,7 +79,6 @@ fn sync_glass(
     mut commands: Commands,
     windows: Query<&Window, With<PrimaryWindow>>,
     drawers: Query<&Node, With<DrawerRoot>>,
-    dialogs: Query<(&ComputedNode, &GlobalTransform), With<GlassDialog>>,
     ui_scale: Res<UiScale>,
     game: Res<State<GameState>>,
     tab: Res<State<MenuTab>>,
@@ -99,23 +99,14 @@ fn sync_glass(
     } else {
         0.
     };
-    let dialog = if modal {
-        dialogs.single().map_or(Vec4::ZERO, |(node, transform)| {
-            let scale = node.inverse_scale_factor();
-            let center = transform.translation().truncate() * scale;
-            let half_size = node.size() * scale * 0.5;
-            let min = center - half_size;
-            let max = center + half_size;
-            Vec4::new(min.x, min.y, max.x, max.y)
-        })
-    } else {
-        Vec4::ZERO
-    };
     let glass = MenuGlassSettings {
         geometry: Vec4::new(
             size.x,
             size.y,
-            if !menu {
+            if modal {
+                // Dialogs float above a frosted scene covering the entire viewport.
+                size.y
+            } else if !menu {
                 0.
             } else if matches!(
                 *tab.get(),
@@ -127,7 +118,6 @@ fn sync_glass(
             },
             drawer_width,
         ),
-        dialog,
     };
     // Frost the final 3D composite, including the first-person weapon, once.
     // Removing the component on resume also skips the post-process entirely.
