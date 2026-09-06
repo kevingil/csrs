@@ -22,8 +22,9 @@ fn dust2() -> MenuSceneDefinition {
     MenuSceneDefinition {
         scene: "generated/menu/dust2.glb#Scene0",
         thumbnail: "generated/menu/dust2-card.png",
-        camera: Transform::from_xyz(0., 1.18, 3.2).looking_at(Vec3::new(0., 0.98, 0.), Vec3::Y),
-        character: Transform::from_rotation(Quat::from_rotation_y(-0.12)),
+        // A near-level, full-body portrait: head just below the bar, boots near the footer.
+        camera: Transform::from_xyz(0., 1.05, 2.4).looking_at(Vec3::new(0., 0.94, 0.), Vec3::Y),
+        character: Transform::from_rotation(Quat::from_rotation_y(-0.32)),
         lighting: LightingConfig {
             ambient_color: ColorRgb {
                 r: 0.82,
