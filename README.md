@@ -11,7 +11,7 @@ cargo run --locked --bin open-strike
 Open **Play**, select **Deathmatch / Dust 2**, then click **Start Game**. Inventory browses available equipment; **Load Out** equips Soldier or Police, selecting the corresponding team and world character. Both teams carry an AK-47 and one Default Knife. Bots currently use the AK. Home shows an animated character in a separate A-site scene viewed from Long A. Hover the right profile rail to open Friends; click pins it, Tab focuses it, and Escape closes it. The local placeholder shows **no friends**. Human networking remains v2.
 
 - WASD: move; mouse: aim; hold left mouse: AK automatic fire or repeated knife slashes.
-- 1: AK-47; 3: Default Knife; Q: previous weapon. Switching cancels an unfinished reload and preserves AK ammunition.
+- 1: AK-47; 3: Default Knife; F: previous weapon. Q is reserved for the future circular inventory picker. Switching cancels an unfinished reload and preserves AK ammunition.
 - R: reload; Space: jump; Left Shift: sprint; Left Ctrl: crouch.
 - Esc: pause/resume. Losing window focus pauses the local match.
 - At the result screen: Enter restarts; Esc returns to the menu.
