@@ -1,4 +1,4 @@
-use super::{friends_drawer::DrawerRoot, style::*, MenuTab};
+use super::{friends_drawer::DrawerClip, style::*, MenuTab};
 use crate::game::{ui::pause_menu::ExitConfirmation, GameState};
 use bevy::prelude::*;
 pub struct NavBarPlugin;
@@ -17,10 +17,6 @@ impl Plugin for NavBarPlugin {
         app.add_systems(Startup, setup)
             .add_systems(Update, visibility)
             .add_systems(
-                PostUpdate,
-                clip_to_drawer.before(bevy::ui::UiSystem::Layout),
-            )
-            .add_systems(
                 Update,
                 (interact, interact_quit).run_if(in_state(GameState::MainMenu)),
             );
@@ -30,6 +26,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
     let clip = commands
         .spawn((
             NavBarClip,
+            DrawerClip,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.),
@@ -178,18 +175,6 @@ fn interact(
             Color::NONE
         };
         border.0 = if active { ACCENT } else { Color::NONE };
-    }
-}
-fn clip_to_drawer(
-    drawers: Query<&Node, With<DrawerRoot>>,
-    mut clips: Query<&mut Node, (With<NavBarClip>, Without<DrawerRoot>)>,
-) {
-    let Ok(drawer) = drawers.single() else {
-        return;
-    };
-    // Crop the header beneath the glass without changing its content layout.
-    for mut clip in &mut clips {
-        clip.right = drawer.width;
     }
 }
 fn visibility(state: Res<State<GameState>>, mut roots: Query<&mut Node, With<NavBarClip>>) {
