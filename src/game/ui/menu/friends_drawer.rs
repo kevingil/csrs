@@ -23,7 +23,7 @@ impl Default for DrawerState {
     }
 }
 #[derive(Component)]
-struct DrawerRoot;
+pub(super) struct DrawerRoot;
 #[derive(Component)]
 struct DrawerContent;
 #[derive(Component)]
@@ -46,14 +46,15 @@ fn setup(mut commands: Commands) {
             Node {
                 position_type: PositionType::Absolute,
                 right: Val::Px(0.),
-                top: Val::Px(HEADER),
+                top: Val::Px(0.),
                 bottom: Val::Px(0.),
                 width: Val::Px(56.),
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(INK),
-            GlobalZIndex(210),
+            BackgroundColor(GLASS),
+            GlobalZIndex(230),
+            bevy::ui::FocusPolicy::Block,
         ))
         .with_children(|root| {
             root.spawn((
@@ -130,7 +131,7 @@ fn update(
     let width = 56. + (expanded - 56.) * state.progress;
     let hover = window
         .cursor_position()
-        .is_some_and(|p| p.x >= window.width() - width && p.y >= HEADER);
+        .is_some_and(|p| p.x >= window.width() - width);
     if !hover {
         state.dismissed = false;
     }
