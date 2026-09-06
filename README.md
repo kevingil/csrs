@@ -79,14 +79,17 @@ python3 tools/generate_sounds.py
 `assets/audio/generated/catalog.ron` maps stable gameplay IDs to WAV files.
 `provenance.json` records the generation method and checksums. `SoundLibrary`
 loads only requested cues. Local cues are non-spatial; other actors use positional
-audio. Footsteps currently use one generic family on all surfaces.
+audio. The local default walking sound is `audio/csgo/misc/step_test_loop.wav`,
+played as a single loop while an actor moves on the ground. Packs without that
+optional cue retain the generated individual-step fallback. Surface-specific
+footsteps are not yet implemented.
 
 ### Optional local recordings
 
 Keep personal recordings under `assets/audio/local/`, which Git ignores. Give each
 WAV the relative filename matching a catalog ID—for example,
 `assets/audio/local/weapons/ak47-1.wav`. The supported import format is mono/stereo,
-8- or 16-bit PCM WAV. Index existing files and explicitly opt into the pack:
+8- or 16-bit PCM WAV. Index existing files; the local catalog loads automatically:
 
 ```sh
 python3 tools/index_sounds.py assets/audio/local
@@ -94,6 +97,8 @@ OPEN_STRIKE_AUDIO_PACK=assets/audio/local/catalog.ron cargo run --locked --bin o
 ```
 
 Partial packs override only matching IDs; missing files keep generated defaults.
+`OPEN_STRIKE_AUDIO_PACK` takes precedence over the automatic local catalog.
+Set it to `assets/audio/generated/catalog.ron` to explicitly use generated cues.
 An unreadable or malformed catalog falls back to the default pack. The existing
 private pack under `assets/audio/csgo/` is also ignored and can be used locally:
 
