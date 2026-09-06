@@ -1,32 +1,61 @@
-use super::{style::*, MenuTab};
-use crate::game::GameState;
+use super::{friends_drawer::DrawerRoot, style::*, MenuTab};
+use crate::game::{ui::pause_menu::ExitConfirmation, GameState};
 use bevy::prelude::*;
 pub struct NavBarPlugin;
 #[derive(Component)]
 pub struct NavBarRoot;
 #[derive(Component)]
+struct NavBarClip;
+#[derive(Component)]
 pub(super) struct NavButton(pub MenuTab);
+#[derive(Component)]
+struct QuitGameButton;
+#[derive(Component)]
+struct QuitGameTooltip;
 impl Plugin for NavBarPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup)
             .add_systems(Update, visibility)
-            .add_systems(Update, interact.run_if(in_state(GameState::MainMenu)));
+            .add_systems(
+                PostUpdate,
+                clip_to_drawer.before(bevy::ui::UiSystem::Layout),
+            )
+            .add_systems(
+                Update,
+                (interact, interact_quit).run_if(in_state(GameState::MainMenu)),
+            );
     }
 }
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, server: Res<AssetServer>) {
+    let clip = commands
+        .spawn((
+            NavBarClip,
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.),
+                right: Val::Px(56.),
+                height: Val::Px(HEADER),
+                overflow: Overflow::clip_x(),
+                ..default()
+            },
+            GlobalZIndex(220),
+        ))
+        .id();
     commands
         .spawn((
             NavBarRoot,
+            ChildOf(clip),
             Node {
                 position_type: PositionType::Absolute,
-                width: Val::Percent(100.),
+                left: Val::Px(0.),
+                width: Val::Vw(100.),
+                padding: UiRect::right(Val::Px(56.)),
                 height: Val::Px(HEADER),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(INK),
-            GlobalZIndex(220),
+            BackgroundColor(GLASS),
         ))
         .with_children(|bar| {
             for (tab, name) in [
@@ -55,7 +84,76 @@ fn setup(mut commands: Commands) {
                 ))
                 .with_child(label(name, size, WHITE));
             }
+            bar.spawn((
+                QuitGameButton,
+                Name::new("Quit Game"),
+                Button,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(8.),
+                    width: Val::Px(40.),
+                    height: Val::Px(40.),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+            ))
+            .with_child((
+                ImageNode {
+                    color: WHITE,
+                    ..ImageNode::new(server.load("models/images/icon-shutdown-96.png"))
+                },
+                Node {
+                    width: Val::Px(26.),
+                    height: Val::Px(26.),
+                    ..default()
+                },
+            ));
+            bar.spawn((
+                QuitGameTooltip,
+                label("Quit Game", 14., WHITE),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(8.),
+                    top: Val::Px(HEADER),
+                    padding: UiRect::axes(Val::Px(12.), Val::Px(8.)),
+                    ..default()
+                },
+                BackgroundColor(INK),
+                Visibility::Hidden,
+            ));
         });
+}
+fn interact_quit(
+    mut buttons: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<QuitGameButton>),
+    >,
+    mut tooltips: Query<&mut Visibility, With<QuitGameTooltip>>,
+    mut confirmation: ResMut<ExitConfirmation>,
+) {
+    for (interaction, mut background) in &mut buttons {
+        let hovered = *interaction != Interaction::None;
+        background.0 = if hovered {
+            Color::srgba(1., 1., 1., 0.08)
+        } else {
+            Color::NONE
+        };
+        for mut visibility in &mut tooltips {
+            *visibility = if hovered {
+                Visibility::Visible
+            } else {
+                Visibility::Hidden
+            };
+        }
+        if *interaction == Interaction::Pressed {
+            confirmation.open = true;
+            for mut visibility in &mut tooltips {
+                *visibility = Visibility::Hidden;
+            }
+        }
+    }
 }
 fn interact(
     tab: Res<State<MenuTab>>,
@@ -73,7 +171,7 @@ fn interact(
         }
         let active = button.0 == *tab.get();
         bg.0 = if active {
-            SELECTED
+            GLASS_SELECTED
         } else if *interaction == Interaction::Hovered {
             Color::srgba(1., 1., 1., 0.08)
         } else {
@@ -82,7 +180,19 @@ fn interact(
         border.0 = if active { ACCENT } else { Color::NONE };
     }
 }
-fn visibility(state: Res<State<GameState>>, mut roots: Query<&mut Node, With<NavBarRoot>>) {
+fn clip_to_drawer(
+    drawers: Query<&Node, With<DrawerRoot>>,
+    mut clips: Query<&mut Node, (With<NavBarClip>, Without<DrawerRoot>)>,
+) {
+    let Ok(drawer) = drawers.single() else {
+        return;
+    };
+    // Crop the header beneath the glass without changing its content layout.
+    for mut clip in &mut clips {
+        clip.right = drawer.width;
+    }
+}
+fn visibility(state: Res<State<GameState>>, mut roots: Query<&mut Node, With<NavBarClip>>) {
     for mut node in &mut roots {
         node.display = if *state.get() == GameState::MainMenu {
             Display::Flex
