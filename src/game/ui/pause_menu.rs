@@ -27,10 +27,6 @@ pub struct ExitConfirmation {
 #[derive(Component)]
 struct PauseMenuRoot;
 
-/// The blur pass reads the actual panel bounds after UI layout.
-#[derive(Component)]
-pub(super) struct GlassDialog;
-
 #[derive(Component)]
 struct DialogContent {
     confirmation: bool,
@@ -62,9 +58,11 @@ fn setup_pause_menu(mut commands: Commands, server: Res<AssetServer>) {
             Name::new("Pause and exit overlay"),
             Node {
                 display: Display::None,
-                width: Val::Percent(100.),
-                height: Val::Percent(100.),
                 position_type: PositionType::Absolute,
+                left: Val::Px(0.),
+                right: Val::Px(0.),
+                top: Val::Px(0.),
+                bottom: Val::Px(0.),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -76,7 +74,6 @@ fn setup_pause_menu(mut commands: Commands, server: Res<AssetServer>) {
         .with_children(|overlay| {
             overlay
                 .spawn((
-                    GlassDialog,
                     Node {
                         width: Val::Px(420.),
                         max_width: Val::Percent(90.),
